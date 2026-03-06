@@ -1,0 +1,26 @@
+[llm]
+# LLM provider: "openai", "azure", "ollama" etc.
+provider = "openai"
+model = "gpt-4o"
+api_key = ""           # Leave empty to read from OPENAI_API_KEY env var
+base_url = ""          # Custom endpoint, e.g. for local Ollama: "http://localhost:11434/v1"
+
+# Per-agent temperature overrides
+[llm.temperature]
+intention = 0.7
+implementation = 0.2
+reviewer = 0.1
+attacker = 0.3
+
+[sandbox]
+max_file_size_kb = 50
+max_tool_calls = 15
+ignore_patterns = [".git/", "node_modules/", "venv/", "__pycache__/", "*.pyc", "*.so", "*.bin"]
+
+[review]
+entry_file = "tests/dummy_vuln.py"
+intent = "Review the fund transfer logic for correctness"
+
+[output]
+format = "markdown"    # "markdown" or "json"
+save_to_file = ""      # If non-empty, save report to this path
