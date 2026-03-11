@@ -1,5 +1,8 @@
+# Coacker Configuration
+# Copy this file to config.toml and edit as needed.
+
 [llm]
-# LLM provider: "openai", "azure", "ollama" etc.
+# LLM provider: "openai", "azure", "ollama" etc. (for langchain backend)
 provider = "openai"
 model = "gpt-4o"
 api_key = ""           # Leave empty to read from OPENAI_API_KEY env var
@@ -12,15 +15,38 @@ implementation = 0.2
 reviewer = 0.1
 attacker = 0.3
 
+[backend]
+# Backend type: "langchain" (Python SDK) or "bash" (CLI subprocess)
+type = "bash"
+
+[bash]
+# Bash backend configuration (only used when backend.type = "bash")
+llm_command = "claude --print"
+timeout = 300
+allowed_commands = ["cat", "head", "tail", "grep", "find", "tree", "wc", "git", "ls", "file"]
+
+# Proxy environment variables (optional)
+# [bash.env]
+# HTTP_PROXY = "http://127.0.0.1:10809"
+# HTTPS_PROXY = "http://127.0.0.1:10809"
+
 [sandbox]
 max_file_size_kb = 50
 max_tool_calls = 15
 ignore_patterns = [".git/", "node_modules/", "venv/", "__pycache__/", "*.pyc", "*.so", "*.bin"]
 
+[pipeline]
+max_concurrency = 4
+max_gap_rounds = 2     # Gap Analyzer max iterations (0 = disable)
+
 [review]
-entry_file = "tests/dummy_vuln.py"
-intent = "Review the fund transfer logic for correctness"
+# project_path: root directory for code review
+project_path = "."
+# entry_file: optional entry file (relative to project_path, leave empty for full scan)
+entry_file = ""
+# intent: optional review focus (leave empty for comprehensive review)
+intent = ""
 
 [output]
-format = "markdown"    # "markdown" or "json"
-save_to_file = ""      # If non-empty, save report to this path
+# All reports (intermediate + final) saved to this directory
+output_dir = "./output"

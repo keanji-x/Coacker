@@ -1,72 +1,145 @@
-📘 架构与设计决策汇总：AI 启发式 Code Review Agent
-一、 系统定位与核心愿景
-本项目旨在构建一个高度拟人化、基于多智能体协同（Multi-Agent）的本地代码审查系统。不同于传统基于静态规则或单一 LLM 的“挑刺型”工具，本系统通过引入**“意图假说 -> 现实校验 -> 基础扫雷 -> 逻辑攻击”**的完整心智模型，不仅能发现语法级别的瑕疵，更能深挖业务逻辑与代码实现之间的致命裂缝。
+# Coacker — AI Heuristic Code Review Agent
 
-二、 核心设计理念 (Key Design Philosophies)
-1. 启发式探索 (Heuristic Local Exploration)
-决策：放弃一次性读取全量文件或机械解析全局 AST 的传统做法。
+Multi-agent code review system powered by LLM backends (Claude CLI / LangChain). Automatically explores your codebase, analyzes implementation details, and performs security audits with role-separated agents.
 
-机制：系统从一个单一的入口文件（Entry File）和一段业务意图描述启动。Agent 像真实开发者一样“顺藤摸瓜”，遇到外部调用时，动态决定是否使用工具读取相关联的文件。
+## Architecture
 
-优势：大幅降低无用上下文带来的“噪音（幻觉）”和 Token 消耗，使 Agent 的注意力高度集中在与当前任务相关的逻辑链上。
+```
+Phase 1:   Intention (with tools) → Explores project → Splits into review tasks
+Phase 2:   Implement × N (parallel) → Describes code implementation facts
+Phase 2.5: Gap Analyzer → Finds uncovered areas → Spawns new tasks (iterative)
+Phase 3:   Review + Attack × N (parallel) → Code quality + Security audit
+```
 
-2. Markdown 驱动的通信协议 (Markdown State Bus)
-决策：Agent 之间的信息传递载体采用格式自由但带有层级约定的 Markdown 文本，而非严苛的 JSON/YAML。
+### Agent Roles
 
-机制：上游 Agent 将其推导过程（Chain of Thought）、遗留疑问和方向性线索以 Markdown 记录；下游 Agent 直接阅读并在其基础上延伸或反驳。
+| Role | Job | Doesn't Do |
+|------|-----|------------|
+| **Intention** | Explores project with `tree`/`find`/`cat`, creates task breakdown | — |
+| **Implement** | Describes execution paths, state changes, dependencies (facts only) | No opinions or auditing |
+| **Reviewer** (Blue Team) | Engineering quality: leaks, concurrency, validation, naming | No business logic |
+| **Attacker** (Red Team) | Business logic flaws: auth bypass, state inconsistency, reentrancy | No style issues |
+| **Gap Analyzer** | Reviews all implement reports, identifies gaps, deduplicates | — |
 
-优势：防止因 JSON 解析错误导致流水线中断，同时最大化保留了 LLM 强大的推理能力和“涌现（Emergence）”特性。
+### 4-Layer Design
 
-3. 以 Task 为核心的收敛架构 (Task-Oriented Aggregation)
-决策：将宏观的评审任务切割为多个独立的“子意图（Tasks）”，所有状态流转和最终输出均以 Task 为原子单位。
+```
+Backend (LLM interface)  →  Agent (role + prompt)  →  Task (agent + context)  →  TaskQueue (DAG scheduler)
+```
 
-机制：在执行层，针对不同的 Task 并行展开审查；在输出层，按 Task 呈现“意图-实现-审查-攻击”的完整闭环。
+## Quick Start
 
-优势：实现了真正的“分治（Divide & Conquer）”，天然隔离了不同业务模块的审查幻觉，并为开发者提供了极佳的阅读体验。
+```bash
+# 1. Install dependencies
+pip install uv
+uv venv && source .venv/bin/activate
+uv pip install rich pydantic tomli pathspec
 
-三、 四大核心角色矩阵 (The 4-Agent Matrix)
-系统由四个职责极其收敛的 Agent 组成，形成闭环流水线：
+# 2. Configure
+cp config.example.toml config.toml
+# Edit config.toml: set project_path, backend, proxy settings, etc.
 
-意图梳理者 (Intention Analyzer) —— 提出假说
+# 3. Run
+PYTHONPATH=. .venv/bin/python cli/main.py
+```
 
-职责：翻译官。不看深层代码，仅根据外部输入和入口文件头部，猜测本次变更的宏观目的，并将其拆解为多个子意图（Task），为下游指明探索方向。
+## Usage
 
-实现梳理者 (Implementation Analyzer) —— 逆向寻真
+```bash
+# Full project audit (no entry file needed)
+PYTHONPATH=. .venv/bin/python cli/main.py \
+  -p /path/to/project \
+  --intent "security audit for smart contracts"
 
-职责：探路者。拿着上游的“假说”，主动调用本地文件读取工具在代码库中穿梭。验证假说，剔除错误猜测，并发现意图之外的“附带修改（夹带私货）”，输出真实的执行链路。
+# With specific entry file
+PYTHONPATH=. .venv/bin/python cli/main.py \
+  -p /path/to/project \
+  --entry src/main.sol \
+  --intent "review fund transfer logic"
 
-落地审查者 (Ground Reviewer) —— 基础扫雷
+# Intent is optional — defaults to comprehensive review
+PYTHONPATH=. .venv/bin/python cli/main.py -p /path/to/project
 
-职责：质检员。在确定的代码范围内（Scope），执行经典的静态质量审查（如资源泄露、并发竞态、命名规范等），确保代码的工程下限。
+# Verbose mode (show step-by-step logs)
+PYTHONPATH=. .venv/bin/python cli/main.py -v
 
-意图攻击者 (Intention Attacker) —— 寻找裂缝
+# Custom output directory
+PYTHONPATH=. .venv/bin/python cli/main.py -o ./my_reports
+```
 
-职责：红军。对比“理想意图（角色 1）”与“现实实现（角色 2）”，寻找深层的业务逻辑漏洞（如异常流未覆盖、状态未回滚、南辕北辙的实现）。
+## Configuration
 
-四、 关键工程与安全边界决策 (Guardrails & Limits)
-为了保证系统在本地环境（或未来在 CI/CD 流水线）中安全、稳定、经济地运行，在 Tool Use（工具调用）层面设立了严格的熔断与沙箱机制：
+All settings in `config.toml`:
 
-最大探索步数 (Max Tool Calls)：强制限制 Agent 动态读取文件的次数（如 15 次），防止大模型陷入死循环或无休止的“兔子洞”探索。
+```toml
+[backend]
+type = "bash"                    # "bash" (CLI) or "langchain" (SDK)
 
-访问黑名单 (Ignore Patterns)：内置类似 .gitignore 的机制，物理隔离 .git, node_modules, venv 以及非文本二进制文件，保护系统安全并节约 Token。
+[bash]
+llm_command = "claude --print"   # Any CLI LLM command
+timeout = 300                    # Seconds per LLM call
+allowed_commands = ["cat", "grep", "find", "tree", "wc", "git", "ls"]
 
-单文件截断 (Max File Size)：限制单次读取的文件大小（如 50KB）。超大文件强制截断并注入 [Truncated] 提示，防止上下文溢出。
+[bash.env]                       # Environment variables for subprocess
+HTTP_PROXY = "http://127.0.0.1:10809"
 
-路径防重入 (Visited Cache)：在全局状态中缓存已读取的路径与内容，当 Agent 试图重复读取时直接返回缓存，提升执行速度。
+[pipeline]
+max_concurrency = 4              # Parallel task limit
+max_gap_rounds = 2               # Gap Analyzer iteration limit (0 = disable)
 
-五、 输出架构设计 (Deliverable Structure)
-最终的 Review 报告将彻底摒弃“按文件报错”的散装模式，转而采用基于业务心智的结构化呈现：
+[review]
+project_path = "/path/to/project"
+entry_file = ""                  # Optional: leave empty for full project scan
+intent = ""                      # Optional: leave empty for comprehensive review
 
-全局概览：统计探索深度、涉及文件数及拆解的核心 Task。
+[output]
+output_dir = "./output"          # Reports directory
+```
 
-分模块报告 (按 Task 折叠展示)：
+## Output
 
-[Task N] 模块名称
+All reports are saved to `output_dir/`:
 
-🎯 Intention: 梳理出的业务目标与预期。
+```
+output/
+├── progress.json                 # Checkpoint for interrupt-resume
+├── intention.md                  # Task breakdown
+├── implement_*.md                # Implementation analysis per task
+├── gap_analysis_round_*.md       # Gap analyzer results
+├── review_*.md                   # Code quality review per task
+├── attack_*.md                   # Security audit per task
+└── report.md                     # Final consolidated report
+```
 
-🔍 Implementation: 探测到的真实代码链路。
+## Interrupt & Resume
 
-🛠️ Code Review: 基础代码规范与隐患。
+Pipeline supports checkpoint-based resume. If interrupted (Ctrl+C), just re-run the same command — completed tasks are skipped automatically:
 
-⚔️ Attacker: 高维度的业务逻辑漏洞与异常流缺陷。
+```bash
+# First run (interrupted)
+PYTHONPATH=. .venv/bin/python cli/main.py
+# ^C
+
+# Resume — skips completed tasks
+PYTHONPATH=. .venv/bin/python cli/main.py
+# ↻ Resuming from checkpoint (25/36 tasks completed)
+# ⏭ intention (cached)
+# ⏭ implement_genesis (cached)
+# ▶ attack_runtime_config starting...  ← continues from here
+```
+
+To start fresh: delete `output/progress.json` or use a different `--output-dir`.
+
+## Features
+
+- **Project-wide audit**: Agents freely explore the entire project with tools
+- **Parallel execution**: TaskQueue with DAG-based scheduling
+- **Gap analysis**: Iterative loop to catch missed code paths
+- **Deduplication**: Removes redundant analysis across tasks
+- **Exponential backoff retry**: Handles rate limits and timeouts (3 attempts)
+- **Checkpoint resume**: `progress.json` tracks completion for interrupt-safe runs
+- **Configurable backend**: Swap between Claude CLI, OpenAI SDK, or any LLM CLI tool
+
+## License
+
+MIT
