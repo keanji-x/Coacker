@@ -1,0 +1,14 @@
+{
+  "name": "@coacker/shared",
+  "version": "0.1.0",
+  "description": "Shared types, config, and utilities for Coacker",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "smol-toml": "^1.3.0"
+  }
+}

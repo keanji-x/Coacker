@@ -1,52 +1,29 @@
 # Coacker Configuration
 # Copy this file to config.toml and edit as needed.
 
-[llm]
-# LLM provider: "openai", "azure", "ollama" etc. (for langchain backend)
-provider = "openai"
-model = "gpt-4o"
-api_key = ""           # Leave empty to read from OPENAI_API_KEY env var
-base_url = ""          # Custom endpoint, e.g. for local Ollama: "http://localhost:11434/v1"
-
-# Per-agent temperature overrides
-[llm.temperature]
-intention = 0.7
-implementation = 0.2
-reviewer = 0.1
-attacker = 0.3
-
 [backend]
-# Backend type: "langchain" (Python SDK) or "bash" (CLI subprocess)
-type = "bash"
+type = "ag"                               # Backend type
 
-[bash]
-# Bash backend configuration (only used when backend.type = "bash")
-llm_command = "claude --print"
-timeout = 300
-allowed_commands = ["cat", "head", "tail", "grep", "find", "tree", "wc", "git", "ls", "file"]
+[backend.ag]
+endpointUrl = "http://localhost:9222"      # CDP debug endpoint
+timeout = 30000                           # Connection timeout (ms)
+humanize = true                           # Simulate human typing rhythm
+windowTitle = "Coacker"                   # Window title to connect to
 
-# Proxy environment variables (optional)
-# [bash.env]
-# HTTP_PROXY = "http://127.0.0.1:10809"
-# HTTPS_PROXY = "http://127.0.0.1:10809"
+[brain]
+type = "audit"                            # Brain type
 
-[sandbox]
-max_file_size_kb = 50
-max_tool_calls = 15
-ignore_patterns = [".git/", "node_modules/", "venv/", "__pycache__/", "*.pyc", "*.so", "*.bin"]
+[brain.audit]
+maxGapRounds = 2                          # Gap Analyzer iteration limit (0 = disable)
+maxSubTasks = 20                          # Max sub-tasks per round
+projectRoot = "."                         # Project root to audit
+entryFile = "packages/brain/src/index.ts" # Entry file for analysis
+userIntent = "Comprehensive code review"  # Default review intent
 
-[pipeline]
-max_concurrency = 4
-max_gap_rounds = 2     # Gap Analyzer max iterations (0 = disable)
+[player]
+taskTimeout = 300                         # Per-task timeout (seconds)
+skillsDir = "./skills"                    # Skills directory
 
-[review]
-# project_path: root directory for code review
-project_path = "."
-# entry_file: optional entry file (relative to project_path, leave empty for full scan)
-entry_file = ""
-# intent: optional review focus (leave empty for comprehensive review)
-intent = ""
-
-[output]
-# All reports (intermediate + final) saved to this directory
-output_dir = "./output"
+[knowledge]
+storeDir = "./knowledge"                  # Knowledge base storage
+maxEntrySize = 50000                      # Max chars per knowledge entry

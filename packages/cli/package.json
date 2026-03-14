@@ -1,0 +1,20 @@
+{
+  "name": "@coacker/cli",
+  "version": "0.1.0",
+  "description": "Coacker CLI entry point",
+  "type": "module",
+  "main": "src/main.ts",
+  "bin": {
+    "coacker": "src/main.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@coacker/shared": "workspace:*",
+    "@coacker/backend": "workspace:*",
+    "@coacker/player": "workspace:*",
+    "@coacker/brain": "workspace:*"
+  }
+}

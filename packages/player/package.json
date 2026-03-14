@@ -1,0 +1,15 @@
+{
+  "name": "@coacker/player",
+  "version": "0.1.0",
+  "description": "Player — task executor that drives Backend with context engineering",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coacker/shared": "workspace:*",
+    "@coacker/backend": "workspace:*"
+  }
+}

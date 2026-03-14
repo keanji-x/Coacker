@@ -1,14 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-*.egg-info/
+# Node / TypeScript
+node_modules/
 dist/
-build/
+*.tsbuildinfo
 
-# Virtual environments
-.venv/
-venv/
+# TypeScript build outputs
+packages/**/src/**/*.js
+packages/**/src/**/*.js.map
+packages/**/src/**/*.d.ts
+packages/**/src/**/*.d.ts.map
 
 # IDE
 .vscode/
@@ -22,6 +21,5 @@ Thumbs.db
 # Secrets - don't commit API keys
 config.toml
 
-# uv
-uv.lock
+# Output
 output/
