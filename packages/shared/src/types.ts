@@ -8,39 +8,35 @@
 
 /** 全局配置 (对应 config.toml) */
 export interface CoasterConfig {
-  brain?: BrainConfig;
-  player?: PlayerConfig;
+  /** 项目配置 (审查什么) */
+  project?: ProjectConfig;
+  /** 输出配置 */
+  output?: OutputConfig;
+  /** Backend 配置 (怎么连接 IDE) */
   backend?: BackendConfig;
-  knowledge?: KnowledgeConfig;
+  /** Brain 配置 (审查管道参数) */
+  brain?: BrainConfig;
+  /** Player 配置 */
+  player?: PlayerConfig;
 }
 
-export interface AuditBrainConfig {
-  /** Gap 分析最大轮数 */
-  maxGapRounds?: number;
-  /** 最大子任务数 */
-  maxSubTasks?: number;
+/** 项目配置 — 描述审查目标 */
+export interface ProjectConfig {
   /** 项目根目录 */
-  projectRoot?: string;
-  /** 入口文件 */
-  entryFile?: string;
-  /** 用户意图 */
-  userIntent?: string;
+  root?: string;
+  /** 入口文件 (分析起点) */
+  entry?: string;
+  /** 用户审查意图 */
+  intent?: string;
 }
 
-export interface BrainConfig {
-  /** Brain 类型 */
-  type?: string;
-  /** 审查流水线配置 */
-  audit?: AuditBrainConfig;
+/** 输出配置 */
+export interface OutputConfig {
+  /** 报告和知识文件输出目录 */
+  dir?: string;
 }
 
-export interface PlayerConfig {
-  /** 单次任务超时 (秒) */
-  taskTimeout?: number;
-  /** Skills 目录 */
-  skillsDir?: string;
-}
-
+/** Backend 配置 */
 export interface BackendConfig {
   /** Backend 类型 */
   type?: string;
@@ -48,6 +44,7 @@ export interface BackendConfig {
   ag?: AgConfig;
 }
 
+/** AG CDP 配置 */
 export interface AgConfig {
   /** CDP 端点 URL */
   endpointUrl?: string;
@@ -59,113 +56,112 @@ export interface AgConfig {
   windowTitle?: string;
 }
 
-export interface KnowledgeConfig {
-  /** 知识库存储目录 */
-  storeDir?: string;
-  /** 单个知识条目最大字符数 */
-  maxEntrySize?: number;
+/** Brain 配置 */
+export interface BrainConfig {
+  /** Brain 类型 */
+  type?: string;
+  /** 审查管道配置 */
+  audit?: AuditConfig;
+}
+
+/** 审查管道配置 — 仅管道调优参数 */
+export interface AuditConfig {
+  /** Gap 分析最大轮数 (0 = 禁用) */
+  maxGapRounds?: number;
+  /** 最大子任务数 */
+  maxSubTasks?: number;
+}
+
+/** Player 配置 */
+export interface PlayerConfig {
+  /** 单次任务超时 (秒) */
+  taskTimeout?: number;
 }
 
 // ─── Task ────────────────────────────────────────────
 
-/** 任务状态 */
-export type TaskStatus = 'pending' | 'running' | 'done' | 'error';
+/** 任务类型 */
+export type TaskType =
+  | 'intention'
+  | 'implement'
+  | 'review'
+  | 'attack'
+  | 'gap_analysis'
+  | 'consolidation'
+  | 'custom';
 
-/** Brain 派发给 Player 的任务 */
-export interface Task {
-  /** 唯一 ID */
+/**
+ * 任务中的单个步骤
+ *
+ * 一个 Task 可以包含多个 step，Player 在同一个对话里按顺序执行。
+ */
+export interface TaskStep {
+  /** 步骤 ID (如 'impl', 'review', 'attack') */
   id: string;
-  /** 任务意图描述 */
+  /** 角色 — Player 根据 role 选择 system prompt */
+  role: string;
+  /** 消息内容 (Brain 构造) */
+  message: string;
+}
+
+/**
+ * Brain 派发给 Player 的任务
+ *
+ * 一个 Task = Brain 的一次委派 = Player 的一个对话流。
+ * Task 内部包含 steps，Player 在同一个 IDE 对话里顺序执行。
+ */
+export interface Task {
+  /** 唯一 ID (语义化，如 'intention', 'review_config') */
+  id: string;
+  /** 人可读的任务描述 */
   intention: string;
   /** 任务类型 */
   type: TaskType;
-  /** 任务状态 */
-  status: TaskStatus;
-  /** 依赖的任务 ID 列表 */
-  dependsOn: string[];
-  /** 任务创建时间 */
-  createdAt: number;
-  /** 需要注入的上下文 */
-  context?: TaskContext;
+  /** 任务包含的步骤 */
+  steps: TaskStep[];
 }
 
-/** 任务类型 */
-export type TaskType =
-  | 'intention'       // 意图分析 (探索项目)
-  | 'implement'       // 实现分析 (深入某模块)
-  | 'review'          // 代码审查
-  | 'attack'          // 逻辑攻击
-  | 'gap_analysis'    // 查漏补缺
-  | 'custom';         // 自定义
+// ─── Result ──────────────────────────────────────────
 
-/** 任务上下文 — Player 注入给 Backend 的信息 */
-export interface TaskContext {
-  /** 入口文件 */
-  entryFile?: string;
-  /** 用户意图 */
-  userIntent?: string;
-  /** 项目根目录 */
-  projectRoot?: string;
-  /** 上游任务的结果 */
-  upstreamResults?: Record<string, string>;
-  /** Skills 列表 */
-  skills?: string[];
-  /** 额外的键值对 */
-  extra?: Record<string, unknown>;
-}
-
-/** 任务执行结果 — Player 收集并交给 Brain */
-export interface TaskResult {
-  /** 任务 ID */
-  taskId: string;
-  /** 任务类型 */
-  type: TaskType;
-  /** 完成状态 */
-  status: 'success' | 'error' | 'timeout';
-  /** 回复文本 (Backend 返回的完整回复) */
+/** 单个步骤的执行结果 */
+export interface StepResult {
+  /** 步骤 ID */
+  stepId: string;
+  /** 角色 */
+  role: string;
+  /** 回复文本 */
   response: string;
-  /** 面板全文 (可选) */
-  fullPanel?: string;
+  /** 完成状态 */
+  status: 'success' | 'error' | 'skipped';
   /** 耗时 (秒) */
   elapsed: number;
   /** 状态机步骤数 */
   steps: number;
   /** 自动接受审批次数 */
   approvals: number;
+}
+
+/**
+ * 任务执行结果 — Player 收集并交给 Brain
+ */
+export interface TaskResult {
+  /** 任务 ID */
+  taskId: string;
+  /** 任务类型 */
+  type: TaskType;
+  /** 整体状态 */
+  status: 'success' | 'partial' | 'error';
+  /** 每个步骤的执行结果 */
+  stepResults: StepResult[];
+  /** 总耗时 (秒) */
+  elapsed: number;
+  /** 对话 ID (Player 分配，用于追踪) */
+  conversationId?: string;
   /** 错误信息 */
   error?: string;
-  /** Player 提取的结构化数据 */
-  extracted?: Record<string, unknown>;
 }
 
-// ─── Knowledge ───────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────
 
-/** 知识条目 */
-export interface KnowledgeEntry {
-  /** 唯一 ID */
-  id: string;
-  /** 知识标题 */
-  title: string;
-  /** 知识内容 (Markdown) */
-  content: string;
-  /** 来源任务 ID */
-  sourceTaskId: string;
-  /** 标签 */
-  tags: string[];
-  /** 创建时间 */
-  createdAt: number;
-  /** 更新时间 */
-  updatedAt: number;
-}
-
-// ─── Events / Callbacks ─────────────────────────────
-
-/** 事件回调 */
-export interface CoasterEvents {
-  onTaskStart?: (task: Task) => void;
-  onTaskDone?: (task: Task, result: TaskResult) => void;
-  onKnowledgeUpdate?: (entry: KnowledgeEntry) => void;
-  onLog?: (level: LogLevel, message: string, data?: unknown) => void;
-}
-
+/** 日志级别 */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

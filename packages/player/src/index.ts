@@ -3,7 +3,6 @@
  */
 
 export { Player } from './player.js';
-export type { PlayerOptions } from './player.js';
-export { buildPrompt, mergeContexts } from './context.js';
-export { loadSkills, getSkill, getSkillsContent } from './skills.js';
-export { collectResult, extractJSON, truncate } from './collector.js';
+export type { PlayerOptions, ConversationRecord } from './player.js';
+export { buildStepPrompt, registerRolePrompt, registerRolePrompts, getRolePrompt } from './context.js';
+export { collectStepResult, extractJSON, truncate } from './collector.js';

@@ -4,11 +4,14 @@
  * 让 IDE 里的 AI 分析当前项目的 packages/shared 模块，
  * 输出模块描述。验证完整的 Brain → Player → Backend 闭环。
  *
- * 执行: cd ts && npx tsx packages/cli/tests/e2e-ag.test.ts
+ * 执行: cd /Users/jianxie/Desktop/Coacker && npx tsx packages/cli/tests/e2e-ag.test.ts
  */
 
 import { AgBackend } from '@coacker/backend';
 import { Brain } from '@coacker/brain';
+import {
+  IMPLEMENTATION_SYSTEM_PROMPT,
+} from '@coacker/brain';
 import { Player } from '@coacker/player';
 
 async function main() {
@@ -23,74 +26,64 @@ async function main() {
   const player = new Player({
     backend,
     taskTimeout: 120,
+    rolePrompts: {
+      implementer: IMPLEMENTATION_SYSTEM_PROMPT,
+    },
   });
 
-  const brain = new Brain({
-    knowledgeDir: '/tmp/coacker-e2e-knowledge',
-    audit: { maxGapRounds: 0 },
-  });
-
-  // 2. 连接 Coacker 窗口
+  // 直接用 Player 执行一个单步 task (不走 Brain audit 流程)
   console.log('Connecting to IDE...');
   const title = await player.connect('Coacker');
   console.log(`✅ Connected: ${title}\n`);
 
   try {
-    // 3. 创建复杂任务: 分析 shared 模块
-    brain.dispatcher.createTask('implement', [
-      'Read packages/shared/src/types.ts and packages/shared/src/config.ts.',
-      'For each file, describe its purpose in 1-2 sentences.',
-      'List the main exported types/functions.',
-      'Output as a Markdown summary.',
-    ].join(' '), {
+    const task = {
       id: 'analyze_shared',
-      context: {
-        userIntent: 'Analyze the @coacker/shared module structure',
-        projectRoot: '/Users/jianxie/Desktop/Coacker',
-        entryFile: 'packages/shared/src/index.ts',
-      },
-    });
+      intention: 'Analyze the @coacker/shared module structure',
+      type: 'implement' as const,
+      steps: [{
+        id: 'analyze',
+        role: 'implementer',
+        message: [
+          '## Task: analyze_shared',
+          '**Intention:** Analyze the @coacker/shared module structure',
+          '**Entry File:** packages/shared/src/index.ts',
+          '',
+          'Read packages/shared/src/types.ts and packages/shared/src/config.ts.',
+          'For each file, describe its purpose in 1-2 sentences.',
+          'List the main exported types/functions.',
+          'Output as a Markdown summary.',
+        ].join('\n'),
+      }],
+    };
 
-    console.log(`📋 ${brain.dispatcher.summary()}\n`);
-
-    // 4. 运行
     console.log('Running task (will take ~30-60s)...\n');
-    const results = await brain.run(player);
+    const result = await player.executeTask(task);
 
-    // 5. 输出结果
+    // 输出结果
     console.log('\n' + '='.repeat(60));
     console.log('RESULTS');
     console.log('='.repeat(60));
 
-    for (const r of results) {
-      const icon = r.status === 'success' ? '✅' : '❌';
-      console.log(`\n${icon} ${r.taskId} (${r.type}) — ${r.elapsed.toFixed(1)}s`);
-      console.log(`Steps: ${r.steps}, Approvals: ${r.approvals}`);
-      console.log('\n--- Response (first 500 chars) ---');
-      console.log(r.response.slice(0, 500));
-      if (r.response.length > 500) console.log(`... [${r.response.length - 500} more chars]`);
+    const icon = result.status === 'success' ? '✅' : '❌';
+    console.log(`\n${icon} ${result.taskId} (${result.type}) — ${result.elapsed.toFixed(1)}s`);
+
+    for (const sr of result.stepResults) {
+      console.log(`  Step ${sr.stepId}: ${sr.status} (${sr.elapsed.toFixed(1)}s)`);
+      console.log(`  Response (first 500 chars):`);
+      console.log(`  ${sr.response.slice(0, 500)}`);
     }
 
-    // 6. 知识库
-    console.log('\n--- Knowledge Base ---');
-    console.log(`${brain.knowledge.size} entries:`);
-    for (const entry of brain.knowledge.all()) {
-      console.log(`  📚 ${entry.title}`);
-      console.log(`     Tags: [${entry.tags.join(', ')}]`);
-      console.log(`     Content: ${entry.content.slice(0, 100)}...`);
-    }
-
-    // 7. 断言
+    // 断言
     console.log('\n--- Assertions ---');
     const ok = (cond: boolean, msg: string) => {
       if (cond) console.log(`  ✅ ${msg}`);
       else { console.log(`  ❌ FAIL: ${msg}`); process.exitCode = 1; }
     };
 
-    ok(results.length === 1, `Got ${results.length} result(s)`);
-    ok(results[0]?.status === 'success', `Status: ${results[0]?.status}`);
-    ok(results[0]?.response.length > 50, `Response length: ${results[0]?.response.length} chars`);
-    ok(brain.knowledge.size === 1, `Knowledge entries: ${brain.knowledge.size}`);
+    ok(result.status === 'success', `Status: ${result.status}`);
+    ok(result.stepResults.length === 1, `Steps: ${result.stepResults.length}`);
+    ok(result.stepResults[0]?.response.length > 50, `Response length: ${result.stepResults[0]?.response.length} chars`);
 
   } finally {
     await player.disconnect();

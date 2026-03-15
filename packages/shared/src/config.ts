@@ -1,14 +1,22 @@
 /**
  * @coacker/shared — TOML 配置加载
  *
- * 读取 config.toml，缓存单例。
+ * 读取 config.toml，合并默认值，缓存单例。
+ * 默认值**只在这里定义一次**，消费方不再有 fallback。
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url';
 import { parse as parseToml } from 'smol-toml';
-import type { CoasterConfig } from './types.js';
+import type {
+  CoasterConfig,
+  ProjectConfig,
+  OutputConfig,
+  BackendConfig,
+  BrainConfig,
+  PlayerConfig,
+} from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +27,6 @@ let _cached: CoasterConfig | null = null;
 
 /**
  * 加载配置文件 (单例缓存)
- * @param path 配置文件路径，默认 Coacker/config.toml
  */
 export function loadConfig(path?: string): CoasterConfig {
   if (_cached) return _cached;
@@ -35,11 +42,34 @@ export function resetConfig(): void {
   _cached = null;
 }
 
+// ─── 带默认值的 Getter (唯一的默认值来源) ───
+
+/** 获取项目配置 */
+export function getProjectConfig(config?: CoasterConfig): Required<ProjectConfig> {
+  const cfg = config ?? loadConfig();
+  return {
+    root: '.',
+    entry: '',
+    intent: 'Comprehensive code review',
+    ...cfg.project,
+  };
+}
+
+/** 获取输出配置 */
+export function getOutputConfig(config?: CoasterConfig): Required<OutputConfig> {
+  const cfg = config ?? loadConfig();
+  return {
+    dir: './output',
+    ...cfg.output,
+  };
+}
+
 /** 获取 Backend 配置 */
-export function getBackendConfig(config?: CoasterConfig): Required<CoasterConfig>['backend'] {
+export function getBackendConfig(config?: CoasterConfig): Required<BackendConfig> {
   const cfg = config ?? loadConfig();
   return {
     type: 'ag',
+    ...cfg.backend,
     ag: {
       endpointUrl: 'http://localhost:9222',
       timeout: 30_000,
@@ -47,43 +77,28 @@ export function getBackendConfig(config?: CoasterConfig): Required<CoasterConfig
       windowTitle: '',
       ...cfg.backend?.ag,
     },
-    ...cfg.backend,
   };
 }
 
 /** 获取 Brain 配置 */
-export function getBrainConfig(config?: CoasterConfig): Required<CoasterConfig>['brain'] {
+export function getBrainConfig(config?: CoasterConfig): Required<BrainConfig> {
   const cfg = config ?? loadConfig();
   return {
     type: 'audit',
+    ...cfg.brain,
     audit: {
       maxGapRounds: 2,
       maxSubTasks: 20,
-      projectRoot: '.',
-      entryFile: '',
-      userIntent: 'Comprehensive code review',
       ...cfg.brain?.audit,
     },
-    ...cfg.brain,
   };
 }
 
 /** 获取 Player 配置 */
-export function getPlayerConfig(config?: CoasterConfig): Required<CoasterConfig>['player'] {
+export function getPlayerConfig(config?: CoasterConfig): Required<PlayerConfig> {
   const cfg = config ?? loadConfig();
   return {
     taskTimeout: 300,
-    skillsDir: './skills',
     ...cfg.player,
-  };
-}
-
-/** 获取 Knowledge 配置 */
-export function getKnowledgeConfig(config?: CoasterConfig): Required<CoasterConfig>['knowledge'] {
-  const cfg = config ?? loadConfig();
-  return {
-    storeDir: './knowledge',
-    maxEntrySize: 50_000,
-    ...cfg.knowledge,
   };
 }

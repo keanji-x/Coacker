@@ -1,16 +1,12 @@
 /**
  * @coacker/brain/audit — Audit Brain
  *
- * 审查流水线: 多角色代码审查 (Intention → Implement → Review → Attack)
+ * 审查角色 System Prompts + 类型导出
  */
 
-export { AuditPipeline } from './pipeline.js';
-
 export type {
-  AuditPipelineOptions,
   SubTask,
   TaskReport,
-  GapResult,
   AuditReport,
 } from './types.js';
 
@@ -20,4 +16,5 @@ export {
   REVIEWER_SYSTEM_PROMPT,
   ATTACKER_SYSTEM_PROMPT,
   GAP_ANALYZER_SYSTEM_PROMPT,
+  CONSOLIDATION_SYSTEM_PROMPT,
 } from './prompts.js';

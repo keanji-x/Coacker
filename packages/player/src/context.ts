@@ -1,86 +1,50 @@
 /**
  * @coacker/player — 上下文工程
  *
- * 将 Brain 派发的 Task 转换为 Backend 能理解的 prompt。
- * 负责注入 skills、上游结果、知识片段等上下文。
+ * 将 TaskStep 转换为 Backend 能理解的 prompt。
+ * 角色 prompt 和用户消息分离，拼接为完整 prompt。
  */
 
-import type { Task, TaskContext } from '@coacker/shared';
+import type { TaskStep } from '@coacker/shared';
 
-/**
- * 从 Task 构建完整的 prompt，注入所有上下文
- */
-export function buildPrompt(task: Task): string {
-  const ctx = task.context ?? {};
-  const parts: string[] = [];
+/** 角色 prompt 映射 */
+const ROLE_PROMPTS: Map<string, string> = new Map();
 
-  // 基础意图
-  parts.push(`## Task: ${task.id}`);
-  parts.push(`**Intention:** ${task.intention}`);
-  parts.push('');
+/** 注册角色 prompt */
+export function registerRolePrompt(role: string, prompt: string): void {
+  ROLE_PROMPTS.set(role, prompt);
+}
 
-  // 入口文件
-  if (ctx.entryFile) {
-    parts.push(`**Entry File:** ${ctx.entryFile}`);
+/** 批量注册角色 prompts */
+export function registerRolePrompts(prompts: Record<string, string>): void {
+  for (const [role, prompt] of Object.entries(prompts)) {
+    ROLE_PROMPTS.set(role, prompt);
   }
+}
 
-  // 用户意图
-  if (ctx.userIntent) {
-    parts.push(`**User Intent:** ${ctx.userIntent}`);
-  }
-
-  // 项目根目录
-  if (ctx.projectRoot) {
-    parts.push(`**Project Root:** ${ctx.projectRoot}`);
-  }
-
-  // Skills 注入
-  if (ctx.skills && ctx.skills.length > 0) {
-    parts.push('');
-    parts.push('## Skills');
-    for (const skill of ctx.skills) {
-      parts.push(`- ${skill}`);
-    }
-  }
-
-  // 上游结果注入
-  if (ctx.upstreamResults) {
-    for (const [key, value] of Object.entries(ctx.upstreamResults)) {
-      parts.push('');
-      parts.push(`## Upstream: ${key}`);
-      parts.push(value);
-    }
-  }
-
-  // 额外信息
-  if (ctx.extra) {
-    for (const [key, value] of Object.entries(ctx.extra)) {
-      parts.push('');
-      parts.push(`**${key}:** ${String(value)}`);
-    }
-  }
-
-  return parts.join('\n');
+/** 获取角色 prompt */
+export function getRolePrompt(role: string): string | undefined {
+  return ROLE_PROMPTS.get(role);
 }
 
 /**
- * 合并多份上下文 (用于注入上游结果)
+ * 从 TaskStep 构建完整的 prompt
+ *
+ * 将角色 system prompt 和用户消息拼接在一起。
+ * 角色 prompt 作为前缀，用分隔线与用户消息分开。
  */
-export function mergeContexts(base: TaskContext, ...overlays: Partial<TaskContext>[]): TaskContext {
-  const merged = { ...base };
+export function buildStepPrompt(step: TaskStep): string {
+  const parts: string[] = [];
 
-  for (const overlay of overlays) {
-    if (overlay.entryFile) merged.entryFile = overlay.entryFile;
-    if (overlay.userIntent) merged.userIntent = overlay.userIntent;
-    if (overlay.projectRoot) merged.projectRoot = overlay.projectRoot;
-    if (overlay.skills) merged.skills = [...(merged.skills ?? []), ...overlay.skills];
-    if (overlay.upstreamResults) {
-      merged.upstreamResults = { ...merged.upstreamResults, ...overlay.upstreamResults };
-    }
-    if (overlay.extra) {
-      merged.extra = { ...merged.extra, ...overlay.extra };
-    }
+  // 角色 prompt (如果注册了)
+  const rolePrompt = ROLE_PROMPTS.get(step.role);
+  if (rolePrompt) {
+    parts.push(rolePrompt);
+    parts.push('\n---\n');
   }
 
-  return merged;
+  // 用户消息
+  parts.push(step.message);
+
+  return parts.join('\n');
 }

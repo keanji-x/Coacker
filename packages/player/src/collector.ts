@@ -2,30 +2,27 @@
  * @coacker/player — 结果收集器
  *
  * 从 Backend 返回的 ChatResult 中提取结构化信息。
- * 清洗噪音、提取关键发现、格式化为 TaskResult。
  */
 
 import type { ChatResult } from '@coacker/backend';
-import type { Task, TaskResult } from '@coacker/shared';
+import type { StepResult } from '@coacker/shared';
 
 /**
- * 将 Backend ChatResult 转换为 TaskResult
+ * 将 Backend ChatResult 转换为 StepResult
  */
-export function collectResult(task: Task, chatResult: ChatResult): TaskResult {
+export function collectStepResult(stepId: string, role: string, chatResult: ChatResult): StepResult {
   const status = chatResult.state === 'done' ? 'success'
-    : chatResult.state === 'timeout' ? 'timeout'
+    : chatResult.state === 'timeout' ? 'error'
     : 'error';
 
   return {
-    taskId: task.id,
-    type: task.type,
-    status,
+    stepId,
+    role,
     response: chatResult.response,
-    fullPanel: chatResult.fullPanel,
+    status,
     elapsed: chatResult.elapsed,
     steps: chatResult.steps,
     approvals: chatResult.approvals,
-    error: chatResult.state === 'error' ? 'Backend returned error state' : undefined,
   };
 }
 
@@ -44,7 +41,7 @@ export function extractJSON<T = unknown>(text: string): T | null {
     return JSON.parse(cleaned) as T;
   } catch {
     // 尝试提取第一个 JSON 对象或数组
-    const match = cleaned.match(/[\[{][\s\S]*[\]}]/);
+    const match = cleaned.match(/[[\{][\s\S]*[\]\}]/);
     if (match) {
       try {
         return JSON.parse(match[0]) as T;

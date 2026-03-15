@@ -1,126 +1,488 @@
 /**
- * @coacker/brain — Brain 中央管理者
+ * @coacker/brain — Brain 状态机
  *
- * 编排 Player 执行任务，管理知识库，驱动闭环:
- *   Brain 派任务 → Player 执行 → Brain 收集知识 → Brain 派新任务
+ * Brain 是决策者：驱动审查流程，管理历史记录，构造 Task 下发给 Player。
+ *
+ * 流程:
+ *   Phase 1:   Intention → 探索项目 → 拆分子任务
+ *   Phase 2:   对每个子任务 → 构造 3-step Task (implement → review → attack)
+ *   Phase 2.5: Gap Analysis → 查漏补缺 (可选迭代)
+ *   Phase 3:   Consolidation → AI 汇总报告
+ *
+ * 持久化:
+ *   每个 task 执行完后，Brain 自动保存完整状态到 outputDir:
+ *   - state.json — 状态机状态 (phase, subtasks, gapRound)
+ *   - history.json — 所有 TaskResult 的完整记录
+ *   - reports/ — 每个子任务的详细报告
  */
 
-import { Player } from '@coacker/player';
-import type { Task, TaskResult, CoasterEvents } from '@coacker/shared';
+import type { Player } from '@coacker/player';
+import type { Task, TaskResult, ProjectConfig, AuditConfig, OutputConfig } from '@coacker/shared';
 import { Logger } from '@coacker/shared';
-import { Dispatcher } from './dispatcher.js';
-import { KnowledgeStore } from './knowledge.js';
-import { consolidateBatch } from './consolidator.js';
+import { extractJSON } from '@coacker/player';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { SubTask, TaskReport, AuditReport } from './audit/types.js';
+import {
+  INTENTION_SYSTEM_PROMPT,
+  IMPLEMENTATION_SYSTEM_PROMPT,
+  REVIEWER_SYSTEM_PROMPT,
+  ATTACKER_SYSTEM_PROMPT,
+  GAP_ANALYZER_SYSTEM_PROMPT,
+  CONSOLIDATION_SYSTEM_PROMPT,
+} from './audit/prompts.js';
+
+// ─── Types ───────────────────────────────────────────
+
+export type AuditPhase =
+  | 'idle'
+  | 'intention'
+  | 'execution'
+  | 'gap_analysis'
+  | 'consolidation'
+  | 'done';
 
 export interface BrainOptions {
-  /** 知识库存储目录 */
-  knowledgeDir?: string;
-  /** 审查流水线配置 */
-  audit?: {
-    maxGapRounds?: number;
-    maxSubTasks?: number;
-    projectRoot?: string;
-    entryFile?: string;
-    userIntent?: string;
-  };
-  /** 事件回调 */
-  events?: CoasterEvents;
+  /** 项目配置 (来自 config.toml [project]) */
+  project: Required<ProjectConfig>;
+  /** 审查管道配置 (来自 config.toml [brain.audit]) */
+  audit: Required<AuditConfig>;
+  /** 输出配置 (来自 config.toml [output]) */
+  output: Required<OutputConfig>;
 }
 
-export class Brain {
-  readonly dispatcher: Dispatcher;
-  readonly knowledge: KnowledgeStore;
-  private log: Logger;
-  private maxGapRounds: number;
-  private events: CoasterEvents;
+// ─── Brain ───────────────────────────────────────────
 
-  constructor(options: BrainOptions = {}) {
-    this.dispatcher = new Dispatcher();
-    this.knowledge = new KnowledgeStore(options.knowledgeDir ?? './knowledge');
+export class Brain {
+  // ── 配置 ──
+  private maxGapRounds: number;
+  private maxSubTasks: number;
+  private entryFile: string;
+  private userIntent: string;
+  private outputDir: string;
+
+  // ── 状态机 ──
+  private _phase: AuditPhase = 'idle';
+  private subtasks: SubTask[] = [];
+  private reports: Map<string, TaskReport> = new Map();
+  private gapRound = 0;
+
+  // ── 历史 ──
+  private _history: TaskResult[] = [];
+
+  private log: Logger;
+
+  constructor(options: BrainOptions) {
+    this.maxGapRounds = options.audit.maxGapRounds;
+    this.maxSubTasks = options.audit.maxSubTasks;
+    this.entryFile = options.project.entry;
+    this.userIntent = options.project.intent;
+    this.outputDir = options.output.dir;
     this.log = new Logger('brain');
-    this.maxGapRounds = options.audit?.maxGapRounds ?? 2;
-    this.events = options.events ?? {};
+
+    // 确保输出目录存在
+    mkdirSync(this.outputDir, { recursive: true });
+    mkdirSync(join(this.outputDir, 'reports'), { recursive: true });
   }
 
+  /** 当前阶段 */
+  get phase(): AuditPhase { return this._phase; }
+
+  /** 所有任务执行历史 */
+  get history(): readonly TaskResult[] { return this._history; }
+
   /**
-   * 运行完整的任务闭环
-   *
-   * 流程:
-   *   1. 从 Dispatcher 获取就绪任务
-   *   2. Player 逐个执行
-   *   3. 收集结果 → 知识归纳
-   *   4. 检查是否有新任务 (gap analysis)
-   *   5. 循环直到所有任务完成
+   * 运行完整的审查流程
    */
-  async run(player: Player): Promise<TaskResult[]> {
-    const allResults: TaskResult[] = [];
+  async run(player: Player): Promise<AuditReport> {
+    this.log.info('▶ Brain starting audit');
 
-    this.log.info(`▶ Brain starting. ${this.dispatcher.summary()}`);
+    // ── Phase 1: Intention ──
+    this._phase = 'intention';
+    this.log.info('── Phase 1: Intention Analysis ──');
 
-    let round = 0;
-    while (this.dispatcher.pendingCount > 0 && round <= this.maxGapRounds) {
-      const readyTasks = this.dispatcher.getReady();
+    const intentionTask = this.buildIntentionTask();
+    const intentionResult = await player.executeTask(intentionTask);
+    this._history.push(intentionResult);
+    this.persistState();
 
-      if (readyTasks.length === 0) {
-        this.log.warn('No ready tasks but pending count > 0. Possible dependency cycle.');
-        break;
-      }
+    const intentionResponse = this.getFirstResponse(intentionResult);
+    this.subtasks = this.parseIntentionTasks(intentionResponse)
+      .slice(0, this.maxSubTasks);
 
-      this.log.info(`── Round ${round + 1}: ${readyTasks.length} tasks ready ──`);
+    this.log.info(`  📋 ${this.subtasks.length} sub-tasks identified`);
+    this.persistState();
 
-      // 执行任务
-      for (const task of readyTasks) {
-        this.dispatcher.updateStatus(task.id, 'running');
+    if (this.subtasks.length === 0) {
+      this._phase = 'done';
+      this.persistState();
+      return this.buildReport('No tasks generated by Intention Analyzer.');
+    }
+
+    // ── Phase 2 + 2.5: Execution + Gap 循环 ──
+    let pendingTasks = [...this.subtasks];
+
+    for (let gap = 0; gap <= this.maxGapRounds; gap++) {
+      this._phase = 'execution';
+      this.gapRound = gap;
+      this.log.info(`── Phase 2: Execution (round ${gap + 1}, ${pendingTasks.length} tasks) ──`);
+
+      for (const st of pendingTasks) {
+        const task = this.buildSubTask(st);
         const result = await player.executeTask(task);
-        allResults.push(result);
+        this._history.push(result);
 
-        // 更新任务状态
-        this.dispatcher.updateStatus(
-          task.id,
-          result.status === 'success' ? 'done' : 'error',
+        const report = this.extractReport(st, result);
+        this.reports.set(st.id, report);
+
+        // 每个 subtask 完成后持久化报告 + 状态
+        this.persistReport(st.id, report);
+        this.persistState();
+
+        this.log.info(
+          `  📋 [${st.id}] done — impl: ${report.implementation.length}c, ` +
+          `review: ${report.codeReview.length}c, attack: ${report.attackReview.length}c`
         );
       }
 
-      // 知识归纳
-      const roundResults = readyTasks.map(t =>
-        allResults.find(r => r.taskId === t.id)!
-      );
-      const entries = consolidateBatch(roundResults);
-      for (const entry of entries) {
-        this.knowledge.put(entry);
-        this.events.onKnowledgeUpdate?.(entry);
+      // Gap Analysis (skip on last round)
+      if (gap < this.maxGapRounds) {
+        this._phase = 'gap_analysis';
+        this.log.info(`── Phase 2.5: Gap Analysis (round ${gap + 1}) ──`);
+
+        const gapTask = this.buildGapTask();
+        const gapResult = await player.executeTask(gapTask);
+        this._history.push(gapResult);
+        this.persistState();
+
+        const gapResponse = this.getFirstResponse(gapResult);
+        const newTasks = this.parseGapResult(gapResponse);
+
+        if (newTasks.length === 0) {
+          this.log.info('  ✓ No gaps found, done');
+          break;
+        }
+
+        this.log.info(`  ⟳ Found ${newTasks.length} gaps, spawning new tasks`);
+        pendingTasks = newTasks;
+        this.subtasks.push(...newTasks);
+      } else {
+        this.log.info(`  Max gap rounds (${this.maxGapRounds}) reached`);
       }
-      this.knowledge.save();
-
-      this.log.info(`  📚 ${entries.length} knowledge entries collected`);
-
-      round++;
     }
 
-    this.log.info(`✅ Brain finished. ${this.dispatcher.summary()}`);
-    this.log.info(`  📚 Knowledge base: ${this.knowledge.size} entries`);
+    // ── Phase 3: Consolidation ──
+    this._phase = 'consolidation';
+    this.log.info('── Phase 3: Consolidation ──');
 
-    return allResults;
+    const consolTask = this.buildConsolidationTask();
+    const consolResult = await player.executeTask(consolTask);
+    this._history.push(consolResult);
+
+    const executiveSummary = this.getFirstResponse(consolResult);
+    if (consolResult.status === 'success' || consolResult.status === 'partial') {
+      this.log.info(`  ✅ Consolidation done (${executiveSummary.length} chars)`);
+    } else {
+      this.log.warn(`  ⚠️ Consolidation failed`);
+    }
+
+    // ── Done ──
+    this._phase = 'done';
+    const report = this.buildReport(undefined, executiveSummary);
+
+    // 最终持久化: 状态 + 历史 + Markdown 报告
+    this.persistState();
+    this.persistMarkdownReport(report);
+    this.log.info(`✅ Brain finished. ${this.reports.size} tasks analyzed, ${this._history.length} total executions.`);
+    this.log.info(`  📁 All data saved to: ${this.outputDir}`);
+    return report;
   }
 
-  /** 注入知识摘要到 Task 上下文 */
-  injectKnowledge(task: Task, tags?: string[]): void {
-    const entries = tags
-      ? tags.flatMap(t => this.knowledge.findByTag(t))
-      : this.knowledge.all();
+  // ─── 持久化 ────────────────────────────────
 
-    if (entries.length === 0) return;
+  /** 保存 Brain 状态 (状态机 + 历史) */
+  private persistState(): void {
+    try {
+      // state.json — 状态机快照
+      const state = {
+        phase: this._phase,
+        gapRound: this.gapRound,
+        subtasks: this.subtasks,
+        reportIds: Array.from(this.reports.keys()),
+        historyCount: this._history.length,
+        updatedAt: new Date().toISOString(),
+      };
+      writeFileSync(
+        join(this.outputDir, 'state.json'),
+        JSON.stringify(state, null, 2),
+        'utf-8',
+      );
 
-    const summary = entries
-      .slice(0, 10) // 最多注入 10 条
-      .map(e => `### ${e.title}\n${e.content.slice(0, 500)}`)
+      // history.json — 完整的 TaskResult 列表
+      writeFileSync(
+        join(this.outputDir, 'history.json'),
+        JSON.stringify(this._history, null, 2),
+        'utf-8',
+      );
+    } catch (err) {
+      this.log.warn(`Failed to persist state: ${err}`);
+    }
+  }
+
+  /** 保存单个子任务的详细报告 */
+  private persistReport(taskId: string, report: TaskReport): void {
+    try {
+      writeFileSync(
+        join(this.outputDir, 'reports', `${taskId}.json`),
+        JSON.stringify(report, null, 2),
+        'utf-8',
+      );
+    } catch (err) {
+      this.log.warn(`Failed to persist report ${taskId}: ${err}`);
+    }
+  }
+
+  /** 保存最终的 Markdown 报告 */
+  private persistMarkdownReport(report: AuditReport): void {
+    try {
+      writeFileSync(
+        join(this.outputDir, 'audit-report.md'),
+        report.toMarkdown(),
+        'utf-8',
+      );
+    } catch (err) {
+      this.log.warn(`Failed to persist markdown report: ${err}`);
+    }
+  }
+
+  // ─── Task Builders ─────────────────────────
+
+  private buildIntentionTask(): Task {
+    return {
+      id: 'intention',
+      intention: 'Explore the project and break down the review into sub-tasks',
+      type: 'intention',
+      steps: [{
+        id: 'explore',
+        role: 'intention',
+        message: [
+          `## Task: Intention Analysis`,
+          `**Entry File:** ${this.entryFile}`,
+          `**User Intent:** ${this.userIntent}`,
+          '',
+          `Explore the project starting from the entry file and break the review into sub-tasks.`,
+        ].join('\n'),
+      }],
+    };
+  }
+
+  private buildSubTask(st: SubTask): Task {
+    const contextSnippet = this.buildContextSnippet();
+
+    return {
+      id: `subtask_${st.id}`,
+      intention: st.intention,
+      type: 'implement',
+      steps: [
+        {
+          id: 'impl',
+          role: 'implementer',
+          message: [
+            `## Task: ${st.id}`,
+            `**Intention:** ${st.intention}`,
+            `**Entry File:** ${this.entryFile}`,
+            `**User Intent:** ${this.userIntent}`,
+            contextSnippet ? `\n## Prior Knowledge\n${contextSnippet}` : '',
+          ].filter(Boolean).join('\n'),
+        },
+        {
+          id: 'review',
+          role: 'reviewer',
+          message: 'Now perform a code quality review on the implementation you just analyzed.',
+        },
+        {
+          id: 'attack',
+          role: 'attacker',
+          message: 'Now act as a Red Team attacker. Compare the original user intention with the implementation you analyzed and find deep business logic flaws.',
+        },
+      ],
+    };
+  }
+
+  private buildGapTask(): Task {
+    const summaries = Array.from(this.reports.values())
+      .map(r => [
+        `## Task: ${r.taskId}`,
+        `**Intention:** ${r.intention}`,
+        `**Implementation (first 1000 chars):**`,
+        r.implementation.slice(0, 1000),
+      ].join('\n'))
       .join('\n\n---\n\n');
 
-    task.context = {
-      ...task.context,
-      extra: {
-        ...task.context?.extra,
-        knowledge_context: summary,
+    return {
+      id: `gap_round_${this.gapRound + 1}`,
+      intention: 'Find gaps in existing review coverage',
+      type: 'gap_analysis',
+      steps: [{
+        id: 'gap',
+        role: 'gap_analyzer',
+        message: [
+          `Entry File: ${this.entryFile}`,
+          `User Intent: ${this.userIntent}`,
+          '',
+          '## Existing Implementation Reports',
+          '',
+          summaries,
+        ].join('\n'),
+      }],
+    };
+  }
+
+  private buildConsolidationTask(): Task {
+    const taskSummaries = Array.from(this.reports.values())
+      .map(r => [
+        `### Task: ${r.taskId}`,
+        `**Intention:** ${r.intention}`,
+        '',
+        '**Implementation Findings (first 500 chars):**',
+        r.implementation.slice(0, 500),
+        '',
+        '**Code Review:**',
+        r.codeReview.slice(0, 500) || '_No review._',
+        '',
+        '**Attack Findings:**',
+        r.attackReview.slice(0, 500) || '_No attack._',
+      ].join('\n'))
+      .join('\n\n---\n\n');
+
+    return {
+      id: 'consolidation',
+      intention: 'Synthesize all review findings into an executive summary',
+      type: 'consolidation',
+      steps: [{
+        id: 'synthesize',
+        role: 'consolidator',
+        message: [
+          `## Audit Consolidation`,
+          `**User Intent:** ${this.userIntent}`,
+          `**Tasks Reviewed:** ${this.reports.size}`,
+          '',
+          '## All Review Findings',
+          '',
+          taskSummaries,
+        ].join('\n'),
+      }],
+    };
+  }
+
+  // ─── Result Parsers ────────────────────────
+
+  private getFirstResponse(result: TaskResult): string {
+    const step = result.stepResults.find(s => s.status === 'success');
+    return step?.response ?? '';
+  }
+
+  private extractReport(st: SubTask, result: TaskResult): TaskReport {
+    const implStep = result.stepResults.find(s => s.stepId === 'impl');
+    const reviewStep = result.stepResults.find(s => s.stepId === 'review');
+    const attackStep = result.stepResults.find(s => s.stepId === 'attack');
+
+    return {
+      taskId: st.id,
+      intention: st.intention,
+      implementation: implStep?.response ?? '',
+      codeReview: reviewStep?.response ?? '',
+      attackReview: attackStep?.response ?? '',
+    };
+  }
+
+  private parseIntentionTasks(response: string): SubTask[] {
+    const parsed = extractJSON<Array<{ id: string; intention: string }>>(response);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed
+        .filter(p => p.id && p.intention)
+        .map((p, i) => ({ id: p.id ?? `task_${i + 1}`, intention: p.intention }));
+    }
+
+    const match = response.match(/\[[\s\S]*\]/);
+    if (match) {
+      try {
+        const arr = JSON.parse(match[0]) as Array<{ id?: string; intention?: string }>;
+        if (Array.isArray(arr)) {
+          return arr
+            .filter(p => p.intention)
+            .map((p, i) => ({ id: p.id ?? `task_${i + 1}`, intention: p.intention! }));
+        }
+      } catch { /* ignore */ }
+    }
+
+    return [{ id: 'fallback', intention: this.userIntent }];
+  }
+
+  private parseGapResult(response: string): SubTask[] {
+    const parsed = extractJSON<{
+      completeness_score?: number;
+      gaps?: Array<{ id: string; intention: string }>;
+    }>(response);
+
+    return (parsed?.gaps ?? [])
+      .filter(g => g.id && g.intention)
+      .map(g => ({ id: g.id, intention: g.intention }));
+  }
+
+  private buildContextSnippet(): string {
+    if (this.reports.size === 0) return '';
+
+    const summaries = Array.from(this.reports.values())
+      .slice(-5)
+      .map(r => `- **${r.taskId}**: ${r.intention.slice(0, 100)}`)
+      .join('\n');
+
+    return `Previously analyzed:\n${summaries}`;
+  }
+
+  // ─── Report Builder ────────────────────────
+
+  private buildReport(summary?: string, executiveSummary?: string): AuditReport {
+    const taskReports = Array.from(this.reports.values());
+    const autoSummary = summary ?? `${taskReports.length} sub-tasks analyzed.`;
+    const execSummary = executiveSummary ?? '';
+
+    return {
+      tasks: taskReports,
+      summary: autoSummary,
+      executiveSummary: execSummary,
+      toMarkdown() {
+        const lines: string[] = [];
+        lines.push('# Code Review Report\n');
+
+        if (execSummary) {
+          lines.push(execSummary);
+          lines.push('');
+        }
+
+        lines.push('## Overview\n');
+        lines.push(`- **Tasks analyzed**: ${taskReports.length}`);
+        lines.push('');
+
+        for (const task of taskReports) {
+          lines.push(`---\n\n## [${task.taskId}] ${task.intention.slice(0, 80)}\n`);
+          lines.push('### 🎯 Intention\n');
+          lines.push(task.intention);
+          lines.push('');
+          lines.push('### 🔍 Discovered Implementation\n');
+          lines.push(task.implementation || '_No implementation found._');
+          lines.push('');
+          lines.push('### 🛠️ Ground Review\n');
+          lines.push(task.codeReview || '_No review generated._');
+          lines.push('');
+          lines.push('### ⚔️ Intention Attacker\n');
+          lines.push(task.attackReview || '_No attack generated._');
+          lines.push('');
+        }
+
+        return lines.join('\n');
       },
     };
   }
