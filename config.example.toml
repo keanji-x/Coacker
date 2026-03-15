@@ -1,29 +1,34 @@
 # Coacker Configuration
 # Copy this file to config.toml and edit as needed.
 
+# ─── 项目配置 (审查什么) ───
+[project]
+root = "."                                # 项目根目录
+entry = "packages/brain/src/index.ts"     # 入口文件 (分析起点)
+intent = "Comprehensive code review"      # 审查意图
+
+# ─── 输出配置 ───
+[output]
+dir = "./output"                          # 报告和知识文件输出目录
+
+# ─── Backend (怎么连接 IDE) ───
 [backend]
-type = "ag"                               # Backend type
+type = "ag"
 
 [backend.ag]
-endpointUrl = "http://localhost:9222"      # CDP debug endpoint
+endpointUrl = "http://localhost:9222"     # CDP debug endpoint
 timeout = 30000                           # Connection timeout (ms)
 humanize = true                           # Simulate human typing rhythm
 windowTitle = "Coacker"                   # Window title to connect to
 
+# ─── Brain (审查管道调优) ───
 [brain]
-type = "audit"                            # Brain type
+type = "audit"
 
 [brain.audit]
 maxGapRounds = 2                          # Gap Analyzer iteration limit (0 = disable)
-maxSubTasks = 20                          # Max sub-tasks per round
-projectRoot = "."                         # Project root to audit
-entryFile = "packages/brain/src/index.ts" # Entry file for analysis
-userIntent = "Comprehensive code review"  # Default review intent
+maxSubTasks = 3                           # Max sub-tasks per round
 
+# ─── Player ───
 [player]
 taskTimeout = 300                         # Per-task timeout (seconds)
-skillsDir = "./skills"                    # Skills directory
-
-[knowledge]
-storeDir = "./knowledge"                  # Knowledge base storage
-maxEntrySize = 50000                      # Max chars per knowledge entry

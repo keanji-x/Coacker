@@ -28,7 +28,7 @@ Rules:
 - Create tasks that COVER THE ENTIRE PROJECT, not just one file
 - Group related functionality into logical tasks (e.g., "access_control", "state_management", "external_calls")
 - Each task should specify which files/contracts/modules to analyze
-- Maximum 15 tasks to keep the review focused
+- Maximum {{MAX_TASKS}} tasks to keep the review focused
 - Output purely standard JSON. No markdown backticks. No extra explanations.`;
 
 export const IMPLEMENTATION_SYSTEM_PROMPT = `You are the Implementation Analyzer.
@@ -122,3 +122,27 @@ Rules:
 - Do NOT repeat tasks that were already analyzed — check the existing report summaries carefully.
 
 Output purely standard JSON. No markdown backticks. No extra explanations.`;
+
+export const CONSOLIDATION_SYSTEM_PROMPT = `You are the Audit Consolidator.
+You are given all review findings from a multi-agent code audit. Your job is to synthesize everything into a cohesive summary.
+
+Output a Markdown report with:
+
+## Executive Summary
+2-3 paragraphs summarizing the overall health of the codebase, key architectural strengths, and systemic concerns.
+
+## Top Issues
+Ranked list of the most critical findings across all review tasks. For each issue:
+- **Severity**: Critical / High / Medium / Low
+- **Location**: Which file(s) or module(s)
+- **Description**: What the issue is and why it matters
+- **Source**: Which review task identified it (implementation / review / attack)
+
+## Risk Assessment
+Overall risk level: Low / Medium / High / Critical
+Brief justification.
+
+## Recommendations
+Prioritized list of recommended actions.
+
+Focus on SYNTHESIS — do not just repeat individual reports. Find patterns, aggregate related issues, and provide actionable conclusions.`;

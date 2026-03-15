@@ -5,7 +5,7 @@ Multi-agent code review system that operates through IDE automation. Automatical
 ## Architecture
 
 ```
-Brain (orchestrator)  →  Player (context + delegation)  →  Backend (IDE automation via CDP)
+Brain (state machine)  →  Player (task executor)  →  Backend (IDE automation via CDP)
 ```
 
 ### Audit Pipeline
@@ -16,6 +16,7 @@ Per task:    Implement     → Describes code implementation (facts only)
              → Review      → Code quality audit (Blue Team)  [same conversation]
              → Attack      → Business logic flaws (Red Team) [same conversation]
 Phase 2.5:   Gap Analyzer  → Finds uncovered areas → Spawns new tasks (iterative)
+Phase 3:     Consolidation → AI synthesizes executive summary
 ```
 
 ### Agent Roles
@@ -27,6 +28,7 @@ Phase 2.5:   Gap Analyzer  → Finds uncovered areas → Spawns new tasks (itera
 | **Reviewer** (Blue Team) | Engineering quality: leaks, concurrency, validation | Code hygiene |
 | **Attacker** (Red Team) | Business logic flaws: auth bypass, state inconsistency | Fatal logic bugs |
 | **Gap Analyzer** | Reviews reports, identifies gaps, deduplicates | Completeness |
+| **Consolidator** | Synthesizes all findings into executive summary | Final report |
 
 ### Packages
 
@@ -34,9 +36,9 @@ Phase 2.5:   Gap Analyzer  → Finds uncovered areas → Spawns new tasks (itera
 packages/
 ├── shared/    — Types, config, logger
 ├── backend/   — IDE automation (Antigravity CDP + Mock)
-├── player/    — Task execution (context engineering + result collection)
-├── brain/     — Orchestration (dispatcher, knowledge, audit pipeline)
-└── cli/       — E2E tests and CLI entry points
+├── player/    — Task execution (multi-step conversation management)
+├── brain/     — State machine orchestrator + audit prompts
+└── cli/       — CLI entry point + E2E tests
 ```
 
 ## Quick Start
@@ -47,31 +49,44 @@ pnpm install
 
 # 2. Configure
 cp config.example.toml config.toml
-# Edit config.toml as needed
+# Edit config.toml — set project entry file and intent
 
 # 3. Run audit
-npx tsx packages/cli/tests/e2e-audit.test.ts
+npx tsx packages/cli/src/main.ts
 ```
 
 ## Usage
 
 ```typescript
 import { AgBackend } from '@coacker/backend';
-import { AuditPipeline } from '@coacker/brain';
+import { Brain, INTENTION_SYSTEM_PROMPT, IMPLEMENTATION_SYSTEM_PROMPT,
+  REVIEWER_SYSTEM_PROMPT, ATTACKER_SYSTEM_PROMPT,
+  GAP_ANALYZER_SYSTEM_PROMPT, CONSOLIDATION_SYSTEM_PROMPT } from '@coacker/brain';
 import { Player } from '@coacker/player';
 
-// Setup
+// 1. Setup
 const backend = new AgBackend({ endpointUrl: 'http://localhost:9222', humanize: true });
-const player = new Player({ backend, taskTimeout: 300 });
-const pipeline = new AuditPipeline({ maxGapRounds: 1 });
+const player = new Player({
+  backend,
+  taskTimeout: 300,
+  rolePrompts: {
+    intention: INTENTION_SYSTEM_PROMPT,
+    implementer: IMPLEMENTATION_SYSTEM_PROMPT,
+    reviewer: REVIEWER_SYSTEM_PROMPT,
+    attacker: ATTACKER_SYSTEM_PROMPT,
+    gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
+    consolidator: CONSOLIDATION_SYSTEM_PROMPT,
+  },
+});
+const brain = new Brain({
+  project: { root: '.', entry: 'src/main.ts', intent: 'Review this project' },
+  audit: { maxGapRounds: 1, maxSubTasks: 5 },
+});
 
-// Connect to IDE
+// 2. Connect + Run
 await player.connect('MyProject');
-
-// Run audit
-const report = await pipeline.run(player, 'src/main.ts', 'Review this project');
+const report = await brain.run(player);
 console.log(report.toMarkdown());
-
 await player.disconnect();
 ```
 
@@ -80,22 +95,32 @@ await player.disconnect();
 All settings in `config.toml`:
 
 ```toml
-[ag]
-endpoint_url = "http://localhost:9222"
+[project]
+root = "."
+entry = "src/main.ts"
+intent = "Comprehensive code review"
+
+[output]
+dir = "./output"
+
+[backend]
+type = "ag"
+
+[backend.ag]
+endpointUrl = "http://localhost:9222"
 timeout = 30000
 humanize = true
+windowTitle = "MyProject"
 
 [brain]
-max_concurrency = 4
-max_gap_rounds = 2
+type = "audit"
+
+[brain.audit]
+maxGapRounds = 2
+maxSubTasks = 20
 
 [player]
-task_timeout = 300
-skills_dir = "./skills"
-
-[knowledge]
-store_dir = "./knowledge"
-max_entry_size = 50000
+taskTimeout = 300
 ```
 
 ## License
