@@ -112,60 +112,6 @@ export async function snapshotPanel(page: Page): Promise<string> {
   });
 }
 
-/**
- * 直接从 DOM 提取最后一条 AI 回复
- *
- * 比 diff 更可靠: 不依赖 before/after 快照对比。
- * AI 回复渲染在 div.leading-relaxed 容器里，取最后一个的 innerText 即可。
- */
-export async function extractLastResponse(page: Page): Promise<string> {
-  const text = await page.evaluate(`
-    (function() {
-      // 每条消息（用户/AI）都渲染在 leading-relaxed 容器里
-      var containers = document.querySelectorAll('.leading-relaxed');
-      if (containers.length === 0) return '';
-      var last = containers[containers.length - 1];
-      return (last.innerText || '').trim();
-    })()
-  `);
-  return (text as string) || "";
-}
-
-/**
- * 计算当前 .leading-relaxed 容器总数
- * 用于在 chat 前记录 baseline，chat 后提取新增内容
- */
-export async function countMessages(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    return document.querySelectorAll(".leading-relaxed").length;
-  });
-}
-
-/**
- * 提取从 baseCount 开始的所有新 .leading-relaxed 容器文本
- *
- * 比 extractLastResponse 更可靠:
- *   - 包含 thinking（思考过程）
- *   - 包含中间输出（代码动作、文件写入等）
- *   - 包含最终回复
- * 用 NoiseFilter 清洗噪音。
- */
-export async function extractResponsesSince(
-  page: Page,
-  baseCount: number,
-): Promise<string> {
-  const raw = await page.evaluate((base: number) => {
-    const containers = document.querySelectorAll(".leading-relaxed");
-    const parts: string[] = [];
-    for (let i = base; i < containers.length; i++) {
-      const text = (containers[i] as HTMLElement).innerText?.trim();
-      if (text) parts.push(text);
-    }
-    return parts.join("\n\n---\n\n");
-  }, baseCount);
-  return NoiseFilter.clean(raw || "");
-}
-
 // ─── Diff ────────────────────────────────────────────
 
 /**

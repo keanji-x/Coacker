@@ -30,6 +30,8 @@ export interface ChatResult {
   approvals: number;
   /** 自动重试次数 */
   retries: number;
+  /** 当前对话标题 (从 DOM 读取, null = 新对话/无标题) */
+  conversationTitle: string | null;
 }
 
 /** chat() 选项 */
@@ -76,6 +78,12 @@ export interface Backend {
 
   /** 发送消息并等待回复 */
   chat(message: string, options?: ChatOptions): Promise<ChatResult>;
+
+  /** 获取当前对话标题 (从 DOM 读取, null = 新对话/无标题) */
+  getConversationTitle(): Promise<string | null>;
+
+  /** 等待 AI 回复完成 (不发送消息, 用于断点续传) */
+  waitForIdle(options?: ChatOptions): Promise<ChatResult>;
 
   /** 停止当前生成 */
   stop(): Promise<void>;

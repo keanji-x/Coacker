@@ -13,8 +13,13 @@ export type {
   AntigravityOptions,
   CDPPageInfo,
 } from "./types.js";
-export { detectState, clickAccept, clickRetry } from "./state.js";
-export { snapshotPanel, diffSnapshots, extractLastResponse } from "./panel.js";
+export {
+  detectState,
+  clickAccept,
+  clickRetry,
+  getConversationTitle,
+} from "./state.js";
+export { snapshotPanel, diffSnapshots } from "./panel.js";
 export {
   parsePanel,
   countTurns,

@@ -1,11 +1,24 @@
 /**
  * @coacker/brain/audit — Audit Brain
  *
- * 审查角色 System Prompts + 类型导出
+ * 审查状态机 + 角色 Prompts + 类型
  */
 
-export type { SubTask, TaskReport, AuditReport } from "./types.js";
+// ── State Machine ──
+export { AuditBrain } from "./audit-brain.js";
+export type { BrainOptions } from "./audit-brain.js";
 
+// ── Types ──
+export type {
+  SubTask,
+  TaskReport,
+  AuditReport,
+  AuditPhase,
+  AuditBrainOptions,
+  AuditBrainState,
+} from "./types.js";
+
+// ── Prompts ──
 export {
   INTENTION_SYSTEM_PROMPT,
   IMPLEMENTATION_SYSTEM_PROMPT,
@@ -15,3 +28,20 @@ export {
   GAP_ANALYZER_SYSTEM_PROMPT,
   CONSOLIDATION_SYSTEM_PROMPT,
 } from "./prompts.js";
+
+// ── Sub-modules (advanced usage) ──
+export {
+  buildIntentionTask,
+  buildSubTask,
+  buildGapTask,
+  buildConsolidationTask,
+} from "./task-builder.js";
+
+export {
+  getFirstResponse,
+  extractReport,
+  parseIntentionTasks,
+  parseGapResult,
+} from "./result-parser.js";
+
+export { buildReport } from "./report-builder.js";

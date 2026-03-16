@@ -7,37 +7,23 @@
 
 import type { TaskStep } from "@coacker/shared";
 
-/** 角色 prompt 映射 */
-const ROLE_PROMPTS: Map<string, string> = new Map();
-
-/** 注册角色 prompt */
-export function registerRolePrompt(role: string, prompt: string): void {
-  ROLE_PROMPTS.set(role, prompt);
-}
-
-/** 批量注册角色 prompts */
-export function registerRolePrompts(prompts: Record<string, string>): void {
-  for (const [role, prompt] of Object.entries(prompts)) {
-    ROLE_PROMPTS.set(role, prompt);
-  }
-}
-
-/** 获取角色 prompt */
-export function getRolePrompt(role: string): string | undefined {
-  return ROLE_PROMPTS.get(role);
-}
-
 /**
  * 从 TaskStep 构建完整的 prompt
  *
  * 将角色 system prompt 和用户消息拼接在一起。
  * 角色 prompt 作为前缀，用分隔线与用户消息分开。
+ *
+ * @param step - 任务步骤
+ * @param rolePrompts - 角色 prompt 映射 (实例级)
  */
-export function buildStepPrompt(step: TaskStep): string {
+export function buildStepPrompt(
+  step: TaskStep,
+  rolePrompts: ReadonlyMap<string, string>,
+): string {
   const parts: string[] = [];
 
   // 角色 prompt (如果注册了)
-  const rolePrompt = ROLE_PROMPTS.get(step.role);
+  const rolePrompt = rolePrompts.get(step.role);
   if (rolePrompt) {
     parts.push(rolePrompt);
     parts.push("\n---\n");

@@ -98,6 +98,32 @@ const Probes = {
     }
     return false;
   },
+
+  /**
+   * 获取当前对话标题
+   *
+   * DOM 结构 (Antigravity 2026-03):
+   *   .antigravity-agent-side-panel
+   *     > div.w-full.h-full.flex.flex-col.box-border
+   *       > div.flex.items-center.justify-between (头部栏)
+   *         > div.text-ellipsis.whitespace-nowrap  ← 对话标题文本
+   */
+  getConversationTitle: () => {
+    // 新对话或空对话可能显示的默认标题，视为 "无标题"
+    const EMPTY_TITLES = new Set(["agent", "new chat", "untitled"]);
+
+    const panel =
+      document.querySelector(".antigravity-agent-side-panel") ||
+      document.querySelector(".part.auxiliarybar");
+    if (!panel) return "";
+
+    const titleEl = panel.querySelector(
+      ".text-ellipsis.whitespace-nowrap",
+    ) as HTMLElement | null;
+    const title = titleEl?.textContent?.trim() ?? "";
+
+    return EMPTY_TITLES.has(title.toLowerCase()) ? "" : title;
+  },
 } as const;
 
 // ─── Public API ──────────────────────────────────────
@@ -152,4 +178,13 @@ export async function clickRetry(page: Page): Promise<boolean> {
   return page.evaluate((probeSrc) => {
     return new Function(probeSrc)() as boolean;
   }, `return (${Probes.clickRetryButton.toString()})()`);
+}
+
+/**
+ * 获取当前对话标题
+ */
+export async function getConversationTitle(page: Page): Promise<string> {
+  return page.evaluate((probeSrc) => {
+    return new Function(probeSrc)() as string;
+  }, `return (${Probes.getConversationTitle.toString()})()`);
 }
