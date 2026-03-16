@@ -24,3 +24,22 @@ export {
   GAP_ANALYZER_SYSTEM_PROMPT,
   CONSOLIDATION_SYSTEM_PROMPT,
 } from "./audit/index.js";
+
+// ── Validate Brain ──
+export { ValidateBrain } from "./validate/index.js";
+
+export type {
+  IssueItem,
+  ReviewVerdict,
+  UnderstandingResult,
+  ValidationResult,
+  ValidatePhase,
+  ValidateBrainOptions,
+  ValidateBrainState,
+} from "./validate/index.js";
+
+export {
+  ISSUE_ANALYST_SYSTEM_PROMPT,
+  TEST_GENERATOR_SYSTEM_PROMPT,
+  TEST_REVIEWER_SYSTEM_PROMPT,
+} from "./validate/index.js";

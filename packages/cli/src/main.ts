@@ -17,6 +17,12 @@ import {
   GAP_ANALYZER_SYSTEM_PROMPT,
   CONSOLIDATION_SYSTEM_PROMPT,
 } from "@coacker/brain";
+import {
+  ValidateBrain,
+  ISSUE_ANALYST_SYSTEM_PROMPT,
+  TEST_GENERATOR_SYSTEM_PROMPT,
+  TEST_REVIEWER_SYSTEM_PROMPT,
+} from "@coacker/brain";
 import { Player } from "@coacker/player";
 import {
   logger,
@@ -43,6 +49,7 @@ async function main() {
   const intent = args.length > 0 ? args.join(" ") : projectCfg.intent;
 
   logger.info("Coacker starting...");
+  logger.info(`Brain type: ${brainCfg.type}`);
   logger.info(`Intent: ${intent}`);
   logger.info(`Entry: ${projectCfg.entry}`);
   logger.info(`Origin: ${projectCfg.origin || "(not set — issues disabled)"}`);
@@ -56,48 +63,94 @@ async function main() {
     windowTitle: backendCfg.ag?.windowTitle,
   });
 
-  // 2. 创建 Player
-  const player = new Player({
-    backend,
-    taskTimeout: playerCfg.taskTimeout,
-    rolePrompts: {
-      intention: INTENTION_SYSTEM_PROMPT,
-      implementer: IMPLEMENTATION_SYSTEM_PROMPT,
-      reviewer: REVIEWER_SYSTEM_PROMPT,
-      attacker: ATTACKER_SYSTEM_PROMPT,
-      issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || ""),
-      gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
-      consolidator: CONSOLIDATION_SYSTEM_PROMPT,
-    },
-  });
+  // 2. 根据 brain type 分发
+  if (brainCfg.type === "validate") {
+    // ── Validate Brain ──
+    const player = new Player({
+      backend,
+      taskTimeout: playerCfg.taskTimeout,
+      rolePrompts: {
+        issue_analyst: ISSUE_ANALYST_SYSTEM_PROMPT,
+        test_generator: TEST_GENERATOR_SYSTEM_PROMPT,
+        test_reviewer: TEST_REVIEWER_SYSTEM_PROMPT,
+      },
+    });
 
-  // 3. 创建 Brain (配置驱动 — 所有持久化由 Brain 自动完成)
-  const audit = brainCfg.audit!;
-  const brain = new Brain({
-    project: { ...projectCfg, intent },
-    audit: {
-      maxGapRounds: audit.maxGapRounds!,
-      maxSubTasks: audit.maxSubTasks!,
-    },
-    output: outputCfg,
-  });
+    const validate = brainCfg.validate!;
+    const brain = new ValidateBrain({
+      project: { root: projectCfg.root, origin: projectCfg.origin },
+      validate: {
+        maxReviewAttempts: validate.maxReviewAttempts!,
+        excludeLabels: validate.excludeLabels!,
+        draftOnFailure: validate.draftOnFailure!,
+      },
+      output: outputCfg,
+    });
 
-  // 4. 连接
-  const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
-  logger.info(`Connected to: ${pageTitle}`);
+    const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
+    logger.info(`Connected to: ${pageTitle}`);
 
-  try {
-    // 5. 运行 (Brain 自动持久化 state/history/reports/report.md)
-    const report = await brain.run(player);
+    try {
+      const results = await brain.run(player);
 
-    // 6. 输出摘要
-    logger.info(`\n📊 Tasks analyzed: ${report.tasks.length}`);
-    for (const t of report.tasks) {
-      logger.info(`  📋 [${t.taskId}] ${t.intention.slice(0, 60)}`);
+      logger.info(`\n📊 Issues validated: ${results.length}`);
+      for (const r of results) {
+        const icon =
+          r.outcome === "accepted"
+            ? "✅"
+            : r.outcome === "untestable"
+              ? "⏭"
+              : r.outcome === "draft"
+                ? "📝"
+                : "❌";
+        logger.info(
+          `  ${icon} #${r.issueNumber} ${r.issueTitle} → ${r.outcome}`,
+        );
+      }
+      logger.info(`\n📁 All results saved to: ${outputCfg.dir}/validate`);
+    } finally {
+      await player.disconnect();
     }
-    logger.info(`\n📁 All results saved to: ${outputCfg.dir}`);
-  } finally {
-    await player.disconnect();
+  } else {
+    // ── Audit Brain (default) ──
+    const player = new Player({
+      backend,
+      taskTimeout: playerCfg.taskTimeout,
+      rolePrompts: {
+        intention: INTENTION_SYSTEM_PROMPT,
+        implementer: IMPLEMENTATION_SYSTEM_PROMPT,
+        reviewer: REVIEWER_SYSTEM_PROMPT,
+        attacker: ATTACKER_SYSTEM_PROMPT,
+        issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || ""),
+        gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
+        consolidator: CONSOLIDATION_SYSTEM_PROMPT,
+      },
+    });
+
+    const audit = brainCfg.audit!;
+    const brain = new Brain({
+      project: { ...projectCfg, intent },
+      audit: {
+        maxGapRounds: audit.maxGapRounds!,
+        maxSubTasks: audit.maxSubTasks!,
+      },
+      output: outputCfg,
+    });
+
+    const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
+    logger.info(`Connected to: ${pageTitle}`);
+
+    try {
+      const report = await brain.run(player);
+
+      logger.info(`\n📊 Tasks analyzed: ${report.tasks.length}`);
+      for (const t of report.tasks) {
+        logger.info(`  📋 [${t.taskId}] ${t.intention.slice(0, 60)}`);
+      }
+      logger.info(`\n📁 All results saved to: ${outputCfg.dir}`);
+    } finally {
+      await player.disconnect();
+    }
   }
 }
 
