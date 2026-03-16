@@ -18,6 +18,8 @@ export interface TaskReport {
   codeReview: string;
   /** 逻辑攻击 (文本) */
   attackReview: string;
+  /** 提交的 GitHub Issue 提案 (JSON 文本) */
+  issueProposals: string;
 }
 
 /** 完整流水线结果 */

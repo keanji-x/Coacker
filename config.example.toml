@@ -6,6 +6,7 @@
 root = "."                                # 项目根目录
 entry = "packages/brain/src/index.ts"     # 入口文件 (分析起点)
 intent = "Comprehensive code review"      # 审查意图
+origin = ""                               # GitHub origin (owner/repo) — 用于自动提交 issue
 
 # ─── 输出配置 ───
 [output]

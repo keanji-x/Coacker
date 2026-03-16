@@ -28,6 +28,8 @@ export interface ProjectConfig {
   entry?: string;
   /** 用户审查意图 */
   intent?: string;
+  /** GitHub origin (owner/repo) — 用于提交 issue */
+  origin?: string;
 }
 
 /** 输出配置 */
@@ -82,13 +84,13 @@ export interface PlayerConfig {
 
 /** 任务类型 */
 export type TaskType =
-  | 'intention'
-  | 'implement'
-  | 'review'
-  | 'attack'
-  | 'gap_analysis'
-  | 'consolidation'
-  | 'custom';
+  | "intention"
+  | "implement"
+  | "review"
+  | "attack"
+  | "gap_analysis"
+  | "consolidation"
+  | "custom";
 
 /**
  * 任务中的单个步骤
@@ -129,10 +131,12 @@ export interface StepResult {
   stepId: string;
   /** 角色 */
   role: string;
-  /** 回复文本 */
-  response: string;
+  /** 发送给 LLM 的完整 prompt (ask) */
+  prompt: string;
+  /** 面板全量快照 (debug/日志用) */
+  snapshot: string;
   /** 完成状态 */
-  status: 'success' | 'error' | 'skipped';
+  status: "success" | "error" | "skipped";
   /** 耗时 (秒) */
   elapsed: number;
   /** 状态机步骤数 */
@@ -150,7 +154,7 @@ export interface TaskResult {
   /** 任务类型 */
   type: TaskType;
   /** 整体状态 */
-  status: 'success' | 'partial' | 'error';
+  status: "success" | "partial" | "error";
   /** 每个步骤的执行结果 */
   stepResults: StepResult[];
   /** 总耗时 (秒) */
@@ -164,4 +168,4 @@ export interface TaskResult {
 // ─── Helpers ─────────────────────────────────────────
 
 /** 日志级别 */
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";

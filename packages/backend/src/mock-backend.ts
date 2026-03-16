@@ -5,19 +5,19 @@
  * 用于单测和集成测试，不需要真实 IDE。
  */
 
-import type { Backend, ChatResult, ChatOptions } from './interface.js';
+import type { Backend, ChatResult, ChatOptions } from "./interface.js";
 
 export interface MockResponse {
-  /** 回复文本 */
-  response: string;
+  /** 回复文本 (模拟快照) */
+  snapshot: string;
   /** 状态 */
-  state?: ChatResult['state'];
+  state?: ChatResult["state"];
   /** 延迟 (ms) */
   delay?: number;
 }
 
 export class MockBackend implements Backend {
-  readonly name = 'mock';
+  readonly name = "mock";
   private _connected = false;
   private _responses: MockResponse[] = [];
   private _callIndex = 0;
@@ -43,7 +43,7 @@ export class MockBackend implements Backend {
 
   async connect(_target?: string): Promise<string> {
     this._connected = true;
-    return 'MockBackend - Test Page';
+    return "MockBackend - Test Page";
   }
 
   async disconnect(): Promise<void> {
@@ -54,8 +54,8 @@ export class MockBackend implements Backend {
     this.conversationCount++;
   }
 
-  async listConversations(): Promise<{id: string, title?: string}[]> {
-    return [{ id: 'mock-conv-1', title: 'Mock Conv 1' }];
+  async listConversations(): Promise<{ id: string; title?: string }[]> {
+    return [{ id: "mock-conv-1", title: "Mock Conv 1" }];
   }
 
   async switchToConversation(_id: string): Promise<void> {
@@ -66,22 +66,22 @@ export class MockBackend implements Backend {
     this.chatHistory.push({ message, options });
 
     const mockResp = this._responses[this._callIndex] ?? {
-      response: `[Mock] No response configured for call #${this._callIndex}`,
-      state: 'done' as const,
+      snapshot: `[Mock] No response configured for call #${this._callIndex}`,
+      state: "done" as const,
     };
     this._callIndex++;
 
     if (mockResp.delay) {
-      await new Promise(r => setTimeout(r, mockResp.delay));
+      await new Promise((r) => setTimeout(r, mockResp.delay));
     }
 
     return {
-      response: mockResp.response,
-      fullPanel: mockResp.response,
-      state: mockResp.state ?? 'done',
+      snapshot: mockResp.snapshot,
+      state: mockResp.state ?? "done",
       elapsed: (mockResp.delay ?? 10) / 1000,
       steps: 1,
       approvals: 0,
+      retries: 0,
     };
   }
 
