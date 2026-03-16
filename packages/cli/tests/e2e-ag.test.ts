@@ -70,8 +70,8 @@ async function main() {
 
     for (const sr of result.stepResults) {
       console.log(`  Step ${sr.stepId}: ${sr.status} (${sr.elapsed.toFixed(1)}s)`);
-      console.log(`  Response (first 500 chars):`);
-      console.log(`  ${sr.response.slice(0, 500)}`);
+      console.log(`  Snapshot (first 500 chars):`);
+      console.log(`  ${sr.snapshot.slice(0, 500)}`);
     }
 
     // 断言
@@ -83,7 +83,7 @@ async function main() {
 
     ok(result.status === 'success', `Status: ${result.status}`);
     ok(result.stepResults.length === 1, `Steps: ${result.stepResults.length}`);
-    ok(result.stepResults[0]?.response.length > 50, `Response length: ${result.stepResults[0]?.response.length} chars`);
+    ok(result.stepResults[0]?.snapshot.length > 50, `Snapshot length: ${result.stepResults[0]?.snapshot.length} chars`);
 
   } finally {
     await player.disconnect();

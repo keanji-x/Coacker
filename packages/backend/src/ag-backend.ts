@@ -5,9 +5,14 @@
  * 实现统一 Backend 接口，Player 无需了解 CDP 细节。
  */
 
-import type { Backend, BackendOptions, ChatResult, ChatOptions } from './interface.js';
-import { Antigravity } from './ag/client.js';
-import type { ChatResult as AgChatResult } from './ag/types.js';
+import type {
+  Backend,
+  BackendOptions,
+  ChatResult,
+  ChatOptions,
+} from "./interface.js";
+import { Antigravity } from "./ag/client.js";
+import type { ChatResult as AgChatResult } from "./ag/types.js";
 
 export interface AgBackendOptions extends BackendOptions {
   /** 连接的页面标题关键字 */
@@ -17,7 +22,7 @@ export interface AgBackendOptions extends BackendOptions {
 }
 
 export class AgBackend implements Backend {
-  readonly name = 'ag-cdp';
+  readonly name = "ag-cdp";
   private ag: Antigravity;
   private _connected = false;
   private _pageTitle: string;
@@ -28,7 +33,7 @@ export class AgBackend implements Backend {
       timeout: options.timeout,
       humanize: options.humanize,
     });
-    this._pageTitle = options.windowTitle ?? options.pageTitle ?? '';
+    this._pageTitle = options.windowTitle ?? options.pageTitle ?? "";
   }
 
   get isConnected(): boolean {
@@ -50,7 +55,7 @@ export class AgBackend implements Backend {
     await this.ag.newConversation();
   }
 
-  async listConversations(): Promise<{id: string, title?: string}[]> {
+  async listConversations(): Promise<{ id: string; title?: string }[]> {
     return await this.ag.listConversations();
   }
 
@@ -64,19 +69,24 @@ export class AgBackend implements Backend {
       timeout: options?.timeout ?? 300,
       pollInterval: options?.pollInterval,
       idleThreshold: options?.idleThreshold,
+      maxRetries: options?.maxRetries,
     });
 
     // AgChatResult → Backend ChatResult (接口对齐)
     return {
-      response: agResult.response,
-      fullPanel: agResult.fullPanel,
-      state: agResult.state === 'waiting_approval' ? 'waiting_approval'
-        : agResult.state === 'timeout' ? 'timeout'
-        : agResult.state === 'done' ? 'done'
-        : 'error',
+      snapshot: agResult.snapshot,
+      state:
+        agResult.state === "waiting_approval"
+          ? "waiting_approval"
+          : agResult.state === "timeout"
+            ? "timeout"
+            : agResult.state === "done"
+              ? "done"
+              : "error",
       elapsed: agResult.elapsed,
       steps: agResult.steps,
       approvals: agResult.approvals,
+      retries: agResult.retries,
     };
   }
 

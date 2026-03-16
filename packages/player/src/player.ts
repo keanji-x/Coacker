@@ -11,11 +11,11 @@
  * Player 维护对话注册表，记录每个 task 在哪个对话里执行。
  */
 
-import type { Backend } from '@coacker/backend';
-import type { Task, TaskResult, StepResult } from '@coacker/shared';
-import { Logger } from '@coacker/shared';
-import { buildStepPrompt, registerRolePrompts } from './context.js';
-import { collectStepResult } from './collector.js';
+import type { Backend } from "@coacker/backend";
+import type { Task, TaskResult, StepResult } from "@coacker/shared";
+import { Logger } from "@coacker/shared";
+import { buildStepPrompt, registerRolePrompts } from "./context.js";
+import { collectStepResult } from "./collector.js";
 
 export interface PlayerOptions {
   /** 注入的 Backend 实例 */
@@ -49,7 +49,7 @@ export class Player {
 
   constructor(options: PlayerOptions) {
     this._backend = options.backend;
-    this.log = new Logger('player');
+    this.log = new Logger("player");
     this.taskTimeout = options.taskTimeout ?? 300;
 
     // 注册角色 prompts
@@ -72,7 +72,7 @@ export class Player {
    */
   async disconnect(): Promise<void> {
     await this._backend.disconnect();
-    this.log.info('Disconnected');
+    this.log.info("Disconnected");
   }
 
   /**
@@ -86,10 +86,12 @@ export class Player {
    */
   async executeTask(task: Task): Promise<TaskResult> {
     if (!this._backend.isConnected) {
-      throw new Error('Player not connected. Call player.connect() first.');
+      throw new Error("Player not connected. Call player.connect() first.");
     }
 
-    this.log.info(`▶ Starting task: ${task.id} (${task.type}, ${task.steps.length} steps)`);
+    this.log.info(
+      `▶ Starting task: ${task.id} (${task.type}, ${task.steps.length} steps)`,
+    );
 
     const startTime = Date.now();
 
@@ -115,8 +117,9 @@ export class Player {
           stepResults.push({
             stepId: step.id,
             role: step.role,
-            response: '',
-            status: 'skipped',
+            prompt: "",
+            snapshot: "",
+            status: "skipped",
             elapsed: 0,
             steps: 0,
             approvals: 0,
@@ -127,7 +130,9 @@ export class Player {
 
         // 构建 prompt 并发送
         const prompt = buildStepPrompt(step);
-        this.log.debug(`  📤 Step ${step.id} (${step.role}): ${prompt.length} chars`);
+        this.log.debug(
+          `  📤 Step ${step.id} (${step.role}): ${prompt.length} chars`,
+        );
 
         const chatResult = await this._backend.chat(prompt, {
           autoAccept: true,
@@ -137,22 +142,35 @@ export class Player {
         conv.messageCount++;
 
         // 收集步骤结果
-        const stepResult = collectStepResult(step.id, step.role, chatResult);
+        const stepResult = collectStepResult(
+          step.id,
+          step.role,
+          prompt,
+          chatResult,
+        );
         stepResults.push(stepResult);
 
-        const icon = stepResult.status === 'success' ? '✅' : '❌';
-        this.log.info(`  ${icon} Step ${step.id} (${step.role}): ${stepResult.status} (${stepResult.elapsed.toFixed(1)}s)`);
+        const icon = stepResult.status === "success" ? "✅" : "❌";
+        this.log.info(
+          `  ${icon} Step ${step.id} (${step.role}): ${stepResult.status} (${stepResult.elapsed.toFixed(1)}s)`,
+        );
 
-        if (stepResult.status !== 'success') {
+        if (stepResult.status !== "success") {
           previousFailed = true;
         }
       }
 
       // 3. 整体状态判定
       const totalElapsed = (Date.now() - startTime) / 1000;
-      const allSuccess = stepResults.every(s => s.status === 'success');
-      const allFailed = stepResults.every(s => s.status === 'error' || s.status === 'skipped');
-      const overallStatus = allSuccess ? 'success' : allFailed ? 'error' : 'partial';
+      const allSuccess = stepResults.every((s) => s.status === "success");
+      const allFailed = stepResults.every(
+        (s) => s.status === "error" || s.status === "skipped",
+      );
+      const overallStatus = allSuccess
+        ? "success"
+        : allFailed
+          ? "error"
+          : "partial";
 
       const result: TaskResult = {
         taskId: task.id,
@@ -163,17 +181,23 @@ export class Player {
         conversationId: conv.id,
       };
 
-      const icon = overallStatus === 'success' ? '✅' : overallStatus === 'partial' ? '⚠️' : '❌';
-      this.log.info(`${icon} Task ${task.id}: ${overallStatus} (${totalElapsed.toFixed(1)}s) [${conv.id}]`);
+      const icon =
+        overallStatus === "success"
+          ? "✅"
+          : overallStatus === "partial"
+            ? "⚠️"
+            : "❌";
+      this.log.info(
+        `${icon} Task ${task.id}: ${overallStatus} (${totalElapsed.toFixed(1)}s) [${conv.id}]`,
+      );
 
       return result;
-
     } catch (error) {
       const totalElapsed = (Date.now() - startTime) / 1000;
       const result: TaskResult = {
         taskId: task.id,
         type: task.type,
-        status: 'error',
+        status: "error",
         stepResults: [],
         elapsed: totalElapsed,
         error: error instanceof Error ? error.message : String(error),

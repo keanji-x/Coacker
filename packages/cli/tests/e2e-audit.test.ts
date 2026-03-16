@@ -28,7 +28,7 @@ async function main() {
     backend,
     taskTimeout: 300,
     rolePrompts: {
-      intention: INTENTION_SYSTEM_PROMPT.replace('{{MAX_TASKS}}', '3'),
+      intention: INTENTION_SYSTEM_PROMPT,
       implementer: IMPLEMENTATION_SYSTEM_PROMPT,
       reviewer: REVIEWER_SYSTEM_PROMPT,
       attacker: ATTACKER_SYSTEM_PROMPT,

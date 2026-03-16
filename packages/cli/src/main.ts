@@ -6,17 +6,18 @@
  *   npx tsx packages/cli/src/main.ts [intent]
  */
 
-import { AgBackend } from '@coacker/backend';
-import { Brain } from '@coacker/brain';
+import { AgBackend } from "@coacker/backend";
+import { Brain } from "@coacker/brain";
 import {
   INTENTION_SYSTEM_PROMPT,
   IMPLEMENTATION_SYSTEM_PROMPT,
   REVIEWER_SYSTEM_PROMPT,
   ATTACKER_SYSTEM_PROMPT,
+  ISSUE_PROPOSER_SYSTEM_PROMPT,
   GAP_ANALYZER_SYSTEM_PROMPT,
   CONSOLIDATION_SYSTEM_PROMPT,
-} from '@coacker/brain';
-import { Player } from '@coacker/player';
+} from "@coacker/brain";
+import { Player } from "@coacker/player";
 import {
   logger,
   loadConfig,
@@ -25,7 +26,7 @@ import {
   getPlayerConfig,
   getProjectConfig,
   getOutputConfig,
-} from '@coacker/shared';
+} from "@coacker/shared";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -39,11 +40,12 @@ async function main() {
   const playerCfg = getPlayerConfig(cfg);
 
   // CLI 参数覆盖 intent
-  const intent = args.length > 0 ? args.join(' ') : projectCfg.intent;
+  const intent = args.length > 0 ? args.join(" ") : projectCfg.intent;
 
-  logger.info('Coacker starting...');
+  logger.info("Coacker starting...");
   logger.info(`Intent: ${intent}`);
   logger.info(`Entry: ${projectCfg.entry}`);
+  logger.info(`Origin: ${projectCfg.origin || "(not set — issues disabled)"}`);
   logger.info(`Output: ${outputCfg.dir}`);
 
   // 1. 创建 Backend
@@ -59,10 +61,11 @@ async function main() {
     backend,
     taskTimeout: playerCfg.taskTimeout,
     rolePrompts: {
-      intention: INTENTION_SYSTEM_PROMPT.replace('{{MAX_TASKS}}', String(brainCfg.audit?.maxSubTasks ?? 20)),
+      intention: INTENTION_SYSTEM_PROMPT,
       implementer: IMPLEMENTATION_SYSTEM_PROMPT,
       reviewer: REVIEWER_SYSTEM_PROMPT,
       attacker: ATTACKER_SYSTEM_PROMPT,
+      issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || ""),
       gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
       consolidator: CONSOLIDATION_SYSTEM_PROMPT,
     },
@@ -93,13 +96,12 @@ async function main() {
       logger.info(`  📋 [${t.taskId}] ${t.intention.slice(0, 60)}`);
     }
     logger.info(`\n📁 All results saved to: ${outputCfg.dir}`);
-
   } finally {
     await player.disconnect();
   }
 }
 
-main().catch(err => {
-  logger.error('Fatal error', err);
+main().catch((err) => {
+  logger.error("Fatal error", err);
   process.exit(1);
 });

@@ -5,7 +5,7 @@
  * 角色 prompt 和用户消息分离，拼接为完整 prompt。
  */
 
-import type { TaskStep } from '@coacker/shared';
+import type { TaskStep } from "@coacker/shared";
 
 /** 角色 prompt 映射 */
 const ROLE_PROMPTS: Map<string, string> = new Map();
@@ -40,11 +40,11 @@ export function buildStepPrompt(step: TaskStep): string {
   const rolePrompt = ROLE_PROMPTS.get(step.role);
   if (rolePrompt) {
     parts.push(rolePrompt);
-    parts.push('\n---\n');
+    parts.push("\n---\n");
   }
 
   // 用户消息
   parts.push(step.message);
 
-  return parts.join('\n');
+  return parts.join("\n");
 }

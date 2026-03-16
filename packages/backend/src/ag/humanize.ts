@@ -4,15 +4,18 @@
  * 通过随机延迟和变速打字降低自动化检测风险。
  */
 
-import type { Page } from 'playwright';
+import type { Page } from "playwright";
 
 /** 随机范围内延迟 */
 export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** 随机范围延迟 [minS, maxS] 秒 */
-export async function humanDelay(minS: number = 0.5, maxS: number = 1.5): Promise<void> {
+export async function humanDelay(
+  minS: number = 0.5,
+  maxS: number = 1.5,
+): Promise<void> {
   const ms = (minS + Math.random() * (maxS - minS)) * 1000;
   await sleep(ms);
 }
@@ -30,9 +33,9 @@ export async function thinkPause(): Promise<void> {
 /** 模拟人类打字 — 逐字符输入, 随机延迟 */
 export async function humanType(page: Page, text: string): Promise<void> {
   for (const char of text) {
-    if (char === '\n') {
+    if (char === "\n") {
       // Shift+Enter = 换行不发送
-      await page.keyboard.press('Shift+Enter');
+      await page.keyboard.press("Shift+Enter");
     } else {
       await page.keyboard.type(char, { delay: 0 });
     }
@@ -49,7 +52,7 @@ export async function humanType(page: Page, text: string): Promise<void> {
 /** 快速打字 — 用于长文本, 减少总延迟 */
 export async function humanTypeFast(page: Page, text: string): Promise<void> {
   // 按行分割，行间用 Shift+Enter，行内 chunk 打
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
     const chunkSize = 20 + Math.floor(Math.random() * 30);
@@ -60,7 +63,7 @@ export async function humanTypeFast(page: Page, text: string): Promise<void> {
     }
     // 行间换行: Shift+Enter (不触发发送)
     if (li < lines.length - 1) {
-      await page.keyboard.press('Shift+Enter');
+      await page.keyboard.press("Shift+Enter");
       await sleep(30 + Math.random() * 50);
     }
   }

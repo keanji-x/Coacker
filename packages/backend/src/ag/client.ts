@@ -5,13 +5,24 @@
  * 状态检测靠按钮可见性 + 内容变化, 内容获取靠 panel snapshot diff。
  */
 
-import { chromium, type Browser, type Page } from 'playwright';
-import type { ChatResult, ConversationInfo, AntigravityOptions, CDPPageInfo } from './types.js';
-import { AgentState, Keys } from './types.js';
-import { detectState, clickAccept } from './state.js';
-import { snapshotPanel, diffSnapshots, extractLastResponse } from './panel.js';
-import { focusChatInput } from './input.js';
-import { humanDelay, humanType, humanTypeFast, microPause, sleep } from './humanize.js';
+import { chromium, type Browser, type Page } from "playwright";
+import type {
+  ChatResult,
+  ConversationInfo,
+  AntigravityOptions,
+  CDPPageInfo,
+} from "./types.js";
+import { AgentState, Keys } from "./types.js";
+import { detectState, clickAccept, clickRetry } from "./state.js";
+import { snapshotPanel } from "./panel.js";
+import { focusChatInput } from "./input.js";
+import {
+  humanDelay,
+  humanType,
+  humanTypeFast,
+  microPause,
+  sleep,
+} from "./humanize.js";
 
 export class Antigravity {
   private endpointUrl: string;
@@ -20,13 +31,13 @@ export class Antigravity {
 
   private browser: Browser | null = null;
   private _page: Page | null = null;
-  private _pageTitle: string = '';
+  private _pageTitle: string = "";
 
   private conversations: ConversationInfo[] = [];
   private currentConv: ConversationInfo | null = null;
 
   constructor(options: AntigravityOptions = {}) {
-    this.endpointUrl = options.endpointUrl ?? 'http://localhost:9222';
+    this.endpointUrl = options.endpointUrl ?? "http://localhost:9222";
     this.timeout = options.timeout ?? 30_000;
     this._humanize = options.humanize ?? true;
   }
@@ -37,7 +48,7 @@ export class Antigravity {
    * 连接到 Antigravity CDP 端点并选择页面
    * @param pageTitle 目标页面标题的子串匹配
    */
-  async connect(pageTitle: string = ''): Promise<string> {
+  async connect(pageTitle: string = ""): Promise<string> {
     this.browser = await chromium.connectOverCDP(this.endpointUrl);
 
     const pagesInfo = await this.listPagesHTTP();
@@ -46,10 +57,12 @@ export class Antigravity {
     let target: CDPPageInfo | undefined;
     if (pageTitle) {
       target = pagesInfo.find(
-        p => p.type === 'page' && p.title.toLowerCase().includes(pageTitle.toLowerCase())
+        (p) =>
+          p.type === "page" &&
+          p.title.toLowerCase().includes(pageTitle.toLowerCase()),
       );
     } else {
-      target = pagesInfo.find(p => p.type === 'page');
+      target = pagesInfo.find((p) => p.type === "page");
     }
 
     if (!target) {
@@ -68,7 +81,9 @@ export class Antigravity {
             this._pageTitle = await p.title();
             return this._pageTitle;
           }
-        } catch { continue; }
+        } catch {
+          continue;
+        }
       }
     }
 
@@ -82,7 +97,9 @@ export class Antigravity {
             this._pageTitle = await p.title();
             return this._pageTitle;
           }
-        } catch { continue; }
+        } catch {
+          continue;
+        }
       }
     }
 
@@ -96,13 +113,17 @@ export class Antigravity {
       }
     }
 
-    throw new Error('Could not attach to any page');
+    throw new Error("Could not attach to any page");
   }
 
   /** 断开 CDP 连接 */
   async disconnect(): Promise<void> {
     if (this.browser) {
-      try { await this.browser.close(); } catch {}
+      try {
+        await this.browser.close();
+      } catch {
+        /* ignore */
+      }
     }
     this._page = null;
     this.browser = null;
@@ -113,7 +134,7 @@ export class Antigravity {
   }
 
   get page(): Page {
-    if (!this._page) throw new Error('Not connected. Call ag.connect() first.');
+    if (!this._page) throw new Error("Not connected. Call ag.connect() first.");
     return this._page;
   }
 
@@ -126,7 +147,7 @@ export class Antigravity {
   /** 列出可用页面 (过滤 worker) */
   async listPages(): Promise<CDPPageInfo[]> {
     const all = await this.listPagesHTTP();
-    return all.filter(p => p.type === 'page');
+    return all.filter((p) => p.type === "page");
   }
 
   // ─── 对话操作 ───────────────────────────────
@@ -149,26 +170,40 @@ export class Antigravity {
         await sleep(500);
       }
 
-      // 验证: 新对话 = 聊天面板里没有消息 (.leading-relaxed 容器数为 0)
-      const msgCount = await this.page.evaluate(() => {
-        return document.querySelectorAll('.leading-relaxed').length;
+      // 验证: 新对话 = 欢迎页可见 (有 "See all" 或 "Ask anything" 文本)
+      const isNewConv = await this.page.evaluate(() => {
+        let found = false;
+        document.querySelectorAll("*").forEach((el: Element) => {
+          const text = (el.textContent || "").trim().toLowerCase();
+          if (
+            (text === "see all" || text.startsWith("ask anything")) &&
+            el.children.length === 0
+          ) {
+            found = true;
+          }
+        });
+        return found;
       });
 
-      if (msgCount === 0) {
-        break; // 成功 — 面板是空的，确认是新对话
+      if (isNewConv) {
+        break; // 成功 — 欢迎页可见，确认是新对话
       }
 
-      // 失败: 面板还有之前的消息，说明快捷键没生效
+      // 失败: 没看到欢迎页，说明快捷键没生效或仍在旧对话
       if (attempt < maxRetries) {
-        console.warn(`[ag] newConversation attempt ${attempt} failed (${msgCount} messages still visible), retrying...`);
+        console.warn(
+          `[ag] newConversation attempt ${attempt} failed (welcome page not visible), retrying...`,
+        );
         await sleep(1000);
       } else {
-        console.warn(`[ag] newConversation failed after ${maxRetries} attempts (${msgCount} messages still visible)`);
+        console.warn(
+          `[ag] newConversation failed after ${maxRetries} attempts (welcome page not visible)`,
+        );
       }
     }
 
     const conv: ConversationInfo = {
-      title: '',
+      title: "",
       pageTitle: this._pageTitle,
       createdAt: Date.now(),
     };
@@ -178,16 +213,19 @@ export class Antigravity {
   }
 
   /** 列出历史对话 */
-  async listConversations(): Promise<{id: string, title?: string}[]> {
+  async listConversations(): Promise<{ id: string; title?: string }[]> {
     // 1. 确保在空对话状态以便看到 See all
     await this.newConversation();
     await sleep(this._humanize ? 1000 : 500); // UI 渲染需要点时间
 
     const pg = this.page;
     await pg.evaluate(() => {
-      document.querySelectorAll('*').forEach((el: Element) => {
-        const text = (el.textContent || '').trim().toLowerCase();
-        if ((text === 'see all' || text.includes('past conversation')) && el.children.length === 0) {
+      document.querySelectorAll("*").forEach((el: Element) => {
+        const text = (el.textContent || "").trim().toLowerCase();
+        if (
+          (text === "see all" || text.includes("past conversation")) &&
+          el.children.length === 0
+        ) {
           (el as HTMLElement).click();
         }
       });
@@ -196,20 +234,20 @@ export class Antigravity {
     await sleep(1000); // 等待列表弹出
 
     const lists = await pg.evaluate(() => {
-      const items: {id: string, title: string}[] = [];
-      document.querySelectorAll('*').forEach((el: Element) => {
-        if ((el as HTMLElement).classList.contains('truncate')) {
-           const text = (el.textContent || '').trim();
-           if (text.length > 0) {
-             items.push({ id: text, title: text });
-           }
+      const items: { id: string; title: string }[] = [];
+      document.querySelectorAll("*").forEach((el: Element) => {
+        if ((el as HTMLElement).classList.contains("truncate")) {
+          const text = (el.textContent || "").trim();
+          if (text.length > 0) {
+            items.push({ id: text, title: text });
+          }
         }
       });
       return items;
     });
 
     // 退出列表
-    await pg.keyboard.press('Escape');
+    await pg.keyboard.press("Escape");
     await sleep(500);
 
     return lists;
@@ -223,9 +261,12 @@ export class Antigravity {
 
     const pg = this.page;
     await pg.evaluate(() => {
-      document.querySelectorAll('*').forEach((el: Element) => {
-        const text = (el.textContent || '').trim().toLowerCase();
-        if ((text === 'see all' || text.includes('past conversation')) && el.children.length === 0) {
+      document.querySelectorAll("*").forEach((el: Element) => {
+        const text = (el.textContent || "").trim().toLowerCase();
+        if (
+          (text === "see all" || text.includes("past conversation")) &&
+          el.children.length === 0
+        ) {
           (el as HTMLElement).click();
         }
       });
@@ -235,13 +276,20 @@ export class Antigravity {
 
     const clicked = await pg.evaluate((targetId) => {
       let found = false;
-      document.querySelectorAll('*').forEach((el: Element) => {
-        const text = (el.textContent || '').trim();
-        if (text === targetId && (el as HTMLElement).classList.contains('truncate')) {
+      document.querySelectorAll("*").forEach((el: Element) => {
+        const text = (el.textContent || "").trim();
+        if (
+          text === targetId &&
+          (el as HTMLElement).classList.contains("truncate")
+        ) {
           let clickable: HTMLElement | null = el as HTMLElement;
           // 向上找最近的区块作为点击区域
-          while(clickable && clickable.tagName !== 'DIV' && clickable.parentElement) {
-             clickable = clickable.parentElement;
+          while (
+            clickable &&
+            clickable.tagName !== "DIV" &&
+            clickable.parentElement
+          ) {
+            clickable = clickable.parentElement;
           }
           clickable.click();
           found = true;
@@ -251,7 +299,7 @@ export class Antigravity {
     }, id);
 
     if (!clicked) {
-      await pg.keyboard.press('Escape');
+      await pg.keyboard.press("Escape");
       throw new Error(`Conversation not found: ${id}`);
     }
 
@@ -274,6 +322,7 @@ export class Antigravity {
       timeout?: number;
       pollInterval?: number;
       idleThreshold?: number;
+      maxRetries?: number;
     } = {},
   ): Promise<ChatResult> {
     const pg = this.page; // throws if not connected
@@ -281,13 +330,15 @@ export class Antigravity {
     const autoAccept = options.autoAccept ?? true;
     const timeout = options.timeout ?? 300;
     const pollInterval = options.pollInterval ?? 2000;
-    const idleThreshold = options.idleThreshold ?? 3000;
+    const _idleThreshold = options.idleThreshold ?? 3000;
+    const maxRetries = options.maxRetries ?? 2;
 
     const start = Date.now();
     let approvals = 0;
+    let retries = 0;
     let steps = 0;
 
-    // 1. 激活窗口 & 聚焦输入 & 发送消息
+    // 1. 激活窗口
     await pg.bringToFront();
     await focusChatInput(pg, this._humanize);
     if (this._humanize) await microPause();
@@ -315,7 +366,7 @@ export class Antigravity {
     // 2. 等 Send 按钮出现 (AI 完成) 或 Accept 按钮出现 (需要审批)
     //    Send 按钮消失不是必然的 — AI 回复太快的话 Send 可能根本没消失过。
     //    所以不再检测 "Send 消失再出现"，直接等 Send 出现即可。
-    while ((Date.now() - start) < timeout * 1000) {
+    while (Date.now() - start < timeout * 1000) {
       const state = await detectState(pg);
       steps++;
 
@@ -326,17 +377,38 @@ export class Antigravity {
           await sleep(1000);
           continue;
         } else {
-          await sleep(200);
           const afterSnapshot = await snapshotPanel(pg);
           return {
-            response: await extractLastResponse(pg),
-            fullPanel: afterSnapshot,
-            state: 'waiting_approval',
+            snapshot: afterSnapshot,
+            state: "waiting_approval",
             elapsed: (Date.now() - start) / 1000,
             steps,
             approvals,
+            retries,
           };
         }
+      }
+
+      if (state === AgentState.ERROR_TERMINATED) {
+        retries++;
+        if (retries <= maxRetries) {
+          console.warn(
+            `[ag] Agent terminated with error, retrying (${retries}/${maxRetries})...`,
+          );
+          await clickRetry(pg);
+          await sleep(2000); // 等 Retry 启动
+          continue;
+        }
+        // 超过最大重试次数 → 返回 error
+        const afterSnapshot = await snapshotPanel(pg);
+        return {
+          snapshot: afterSnapshot,
+          state: "error",
+          elapsed: (Date.now() - start) / 1000,
+          steps,
+          approvals,
+          retries,
+        };
       }
 
       if (state === AgentState.IDLE) {
@@ -349,19 +421,18 @@ export class Antigravity {
       await sleep(pollInterval);
     }
 
-    // 4. 提取 AI 回复
-    const response = await extractLastResponse(pg);
+    // 4. 快照面板 (response = fullPanel = 全量快照, 仅用于 debug/日志)
     const afterSnapshot = await snapshotPanel(pg);
     const elapsed = (Date.now() - start) / 1000;
     const isTimeout = elapsed >= timeout;
 
     return {
-      response,
-      fullPanel: afterSnapshot,
-      state: isTimeout ? 'timeout' : 'done',
+      snapshot: afterSnapshot,
+      state: isTimeout ? "timeout" : "done",
       elapsed,
       steps,
       approvals,
+      retries,
     };
   }
 
@@ -371,7 +442,7 @@ export class Antigravity {
   }
 
   /** 截屏 */
-  async screenshot(path: string = '/tmp/ag_screenshot.png'): Promise<string> {
+  async screenshot(path: string = "/tmp/ag_screenshot.png"): Promise<string> {
     await this.page.screenshot({ path });
     return path;
   }

@@ -18,18 +18,18 @@ export interface BackendOptions {
 
 /** chat() 返回结果 */
 export interface ChatResult {
-  /** 回复文本 */
-  response: string;
-  /** 完整面板内容 (可选) */
-  fullPanel?: string;
+  /** 面板全量快照 (innerText, debug/日志用) */
+  snapshot: string;
   /** 最终状态 */
-  state: 'done' | 'timeout' | 'error' | 'waiting_approval';
+  state: "done" | "timeout" | "error" | "waiting_approval";
   /** 耗时 (秒) */
   elapsed: number;
   /** 步骤数 */
   steps: number;
   /** 自动审批次数 */
   approvals: number;
+  /** 自动重试次数 */
+  retries: number;
 }
 
 /** chat() 选项 */
@@ -42,6 +42,8 @@ export interface ChatOptions {
   pollInterval?: number;
   /** IDLE 确认阈值 (ms) */
   idleThreshold?: number;
+  /** "Agent terminated" 后最大自动重试次数 (default: 2) */
+  maxRetries?: number;
 }
 
 /**
@@ -67,7 +69,7 @@ export interface Backend {
   newConversation(): Promise<void>;
 
   /** 列出历史对话 */
-  listConversations(): Promise<{id: string, title?: string}[]>;
+  listConversations(): Promise<{ id: string; title?: string }[]>;
 
   /** 切换到指定对话 */
   switchToConversation(id: string): Promise<void>;
