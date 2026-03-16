@@ -2,11 +2,18 @@
  * @coacker/brain — Public API
  */
 
-export { Brain } from "./brain.js";
-export type { BrainOptions, AuditPhase } from "./brain.js";
+// Brain class (backward-compatible alias for AuditBrain)
+export { AuditBrain as Brain } from "./audit/index.js";
+export type { BrainOptions, AuditPhase } from "./audit/index.js";
 
 // Audit types + prompts
-export type { SubTask, TaskReport, AuditReport } from "./audit/index.js";
+export type {
+  SubTask,
+  TaskReport,
+  AuditReport,
+  AuditBrainOptions,
+  AuditBrainState,
+} from "./audit/index.js";
 
 export {
   INTENTION_SYSTEM_PROMPT,

@@ -436,6 +436,91 @@ export class Antigravity {
     };
   }
 
+  /**
+   * 等待 AI 回复完成 (不发送消息)
+   *
+   * 用于断点续传: prompt 已发出，只需等待 AI 完成并收取快照。
+   * 复用 chat() 的状态机循环，跳过输入/发送阶段。
+   */
+  async waitForIdle(
+    options: {
+      autoAccept?: boolean;
+      timeout?: number;
+      pollInterval?: number;
+    } = {},
+  ): Promise<ChatResult> {
+    const pg = this.page;
+    const autoAccept = options.autoAccept ?? true;
+    const timeout = options.timeout ?? 300;
+    const pollInterval = options.pollInterval ?? 2000;
+
+    const start = Date.now();
+    let approvals = 0;
+    let retries = 0;
+    let steps = 0;
+
+    while (Date.now() - start < timeout * 1000) {
+      const state = await detectState(pg);
+      steps++;
+
+      if (state === AgentState.WAITING_APPROVAL) {
+        if (autoAccept) {
+          await clickAccept(pg);
+          approvals++;
+          await sleep(1000);
+          continue;
+        } else {
+          const snapshot = await snapshotPanel(pg);
+          return {
+            snapshot,
+            state: "waiting_approval",
+            elapsed: (Date.now() - start) / 1000,
+            steps,
+            approvals,
+            retries,
+          };
+        }
+      }
+
+      if (state === AgentState.ERROR_TERMINATED) {
+        retries++;
+        if (retries <= 2) {
+          await clickRetry(pg);
+          await sleep(2000);
+          continue;
+        }
+        const snapshot = await snapshotPanel(pg);
+        return {
+          snapshot,
+          state: "error",
+          elapsed: (Date.now() - start) / 1000,
+          steps,
+          approvals,
+          retries,
+        };
+      }
+
+      if (state === AgentState.IDLE) {
+        await sleep(200);
+        break;
+      }
+
+      await sleep(pollInterval);
+    }
+
+    const snapshot = await snapshotPanel(pg);
+    const elapsed = (Date.now() - start) / 1000;
+
+    return {
+      snapshot,
+      state: elapsed >= timeout ? "timeout" : "done",
+      elapsed,
+      steps,
+      approvals,
+      retries,
+    };
+  }
+
   /** 停止当前生成 */
   async stop(): Promise<void> {
     await this.page.keyboard.press(Keys.STOP_GENERATION);

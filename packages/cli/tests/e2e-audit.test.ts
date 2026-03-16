@@ -42,6 +42,7 @@ async function main() {
       root: '.',
       entry: 'packages/brain/src/index.ts',
       intent: 'Review the @coacker TypeScript monorepo: brain, player, backend, shared packages.',
+      origin: '',
     },
     audit: {
       maxGapRounds: 1,

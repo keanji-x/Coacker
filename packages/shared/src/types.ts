@@ -7,7 +7,7 @@
 // ─── Config ──────────────────────────────────────────
 
 /** 全局配置 (对应 config.toml) */
-export interface CoasterConfig {
+export interface CoackerConfig {
   /** 项目配置 (审查什么) */
   project?: ProjectConfig;
   /** 输出配置 */

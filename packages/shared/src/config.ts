@@ -10,7 +10,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import type {
-  CoasterConfig,
+  CoackerConfig,
   ProjectConfig,
   OutputConfig,
   BackendConfig,
@@ -23,17 +23,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** 默认配置路径: 项目根 config.toml */
 const DEFAULT_CONFIG_PATH = resolve(__dirname, "..", "..", "..", "config.toml");
 
-let _cached: CoasterConfig | null = null;
+let _cached: CoackerConfig | null = null;
 
 /**
  * 加载配置文件 (单例缓存)
  */
-export function loadConfig(path?: string): CoasterConfig {
+export function loadConfig(path?: string): CoackerConfig {
   if (_cached) return _cached;
 
   const configPath = path ?? DEFAULT_CONFIG_PATH;
   const raw = readFileSync(configPath, "utf-8");
-  _cached = parseToml(raw) as unknown as CoasterConfig;
+  _cached = parseToml(raw) as unknown as CoackerConfig;
   return _cached;
 }
 
@@ -46,7 +46,7 @@ export function resetConfig(): void {
 
 /** 获取项目配置 */
 export function getProjectConfig(
-  config?: CoasterConfig,
+  config?: CoackerConfig,
 ): Required<ProjectConfig> {
   const cfg = config ?? loadConfig();
   return {
@@ -60,7 +60,7 @@ export function getProjectConfig(
 
 /** 获取输出配置 */
 export function getOutputConfig(
-  config?: CoasterConfig,
+  config?: CoackerConfig,
 ): Required<OutputConfig> {
   const cfg = config ?? loadConfig();
   return {
@@ -71,7 +71,7 @@ export function getOutputConfig(
 
 /** 获取 Backend 配置 */
 export function getBackendConfig(
-  config?: CoasterConfig,
+  config?: CoackerConfig,
 ): Required<BackendConfig> {
   const cfg = config ?? loadConfig();
   return {
@@ -88,7 +88,7 @@ export function getBackendConfig(
 }
 
 /** 获取 Brain 配置 */
-export function getBrainConfig(config?: CoasterConfig): Required<BrainConfig> {
+export function getBrainConfig(config?: CoackerConfig): Required<BrainConfig> {
   const cfg = config ?? loadConfig();
   return {
     type: "audit",
@@ -103,7 +103,7 @@ export function getBrainConfig(config?: CoasterConfig): Required<BrainConfig> {
 
 /** 获取 Player 配置 */
 export function getPlayerConfig(
-  config?: CoasterConfig,
+  config?: CoackerConfig,
 ): Required<PlayerConfig> {
   const cfg = config ?? loadConfig();
   return {

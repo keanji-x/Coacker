@@ -12,6 +12,7 @@ import type {
   ChatOptions,
 } from "./interface.js";
 import { Antigravity } from "./ag/client.js";
+import { getConversationTitle as getConvTitle } from "./ag/state.js";
 import type { ChatResult as AgChatResult } from "./ag/types.js";
 
 export interface AgBackendOptions extends BackendOptions {
@@ -87,11 +88,32 @@ export class AgBackend implements Backend {
       steps: agResult.steps,
       approvals: agResult.approvals,
       retries: agResult.retries,
+      conversationTitle: (await getConvTitle(this.ag.page)) || null,
     };
   }
 
   async stop(): Promise<void> {
     await this.ag.stop();
+  }
+
+  async getConversationTitle(): Promise<string | null> {
+    return (await getConvTitle(this.ag.page)) || null;
+  }
+
+  async waitForIdle(options?: ChatOptions): Promise<ChatResult> {
+    const agResult = await this.ag.waitForIdle({
+      autoAccept: options?.autoAccept,
+      timeout: options?.timeout,
+    });
+    return {
+      snapshot: agResult.snapshot,
+      state: agResult.state,
+      elapsed: agResult.elapsed,
+      steps: agResult.steps,
+      approvals: agResult.approvals,
+      retries: agResult.retries,
+      conversationTitle: (await getConvTitle(this.ag.page)) || null,
+    };
   }
 
   async screenshot(path?: string): Promise<string> {

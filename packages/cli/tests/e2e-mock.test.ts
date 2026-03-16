@@ -26,37 +26,37 @@ async function main() {
   const backend = new MockBackend([
     // 1. Intention
     {
-      response: `I analyzed the project.\n\n[\n  {"id": "config_review", "intention": "Review configuration loading and validation"}\n]`,
+      snapshot: `I analyzed the project.\n\n[\n  {"id": "config_review", "intention": "Review configuration loading and validation"}\n]`,
       state: 'done',
       delay: 50,
     },
     // 2. SubTask impl
     {
-      response: `## Implementation Analysis\n\nThe config module loads TOML files using smol-toml parser. It uses singleton caching.\n\n### Key Functions\n- \`loadConfig()\`: reads config.toml, caches result\n- \`getBackendConfig()\`: merges defaults with user config`,
+      snapshot: `## Implementation Analysis\n\nThe config module loads TOML files using smol-toml parser. It uses singleton caching.\n\n### Key Functions\n- \`loadConfig()\`: reads config.toml, caches result\n- \`getBackendConfig()\`: merges defaults with user config`,
       state: 'done',
       delay: 50,
     },
     // 3. SubTask review
     {
-      response: `## Code Review\n\n**Warning**: Config spread order may cause nested defaults to be overwritten.\n**Info**: No input validation on TOML values.`,
+      snapshot: `## Code Review\n\n**Warning**: Config spread order may cause nested defaults to be overwritten.\n**Info**: No input validation on TOML values.`,
       state: 'done',
       delay: 50,
     },
     // 4. SubTask attack
     {
-      response: `## Attack Findings\n\n**Medium**: Singleton cache never invalidated - stale config after file changes.`,
+      snapshot: `## Attack Findings\n\n**Medium**: Singleton cache never invalidated - stale config after file changes.`,
       state: 'done',
       delay: 50,
     },
     // 5. Gap analysis
     {
-      response: `{"completeness_score": 9, "gaps": [], "duplicates": []}`,
+      snapshot: `{"completeness_score": 9, "gaps": [], "duplicates": []}`,
       state: 'done',
       delay: 50,
     },
     // 6. Consolidation
     {
-      response: `## Executive Summary\n\nThe codebase shows reasonable structure with a few configuration handling concerns.\n\n## Top Issues\n1. **Medium** - Config override bug in spread order\n2. **Low** - No TOML validation`,
+      snapshot: `## Executive Summary\n\nThe codebase shows reasonable structure with a few configuration handling concerns.\n\n## Top Issues\n1. **Medium** - Config override bug in spread order\n2. **Low** - No TOML validation`,
       state: 'done',
       delay: 50,
     },
@@ -80,6 +80,7 @@ async function main() {
       root: '.',
       entry: 'packages/shared/src/config.ts',
       intent: 'Review the Coacker config system',
+      origin: '',
     },
     audit: {
       maxGapRounds: 1,

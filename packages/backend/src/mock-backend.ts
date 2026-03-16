@@ -82,6 +82,24 @@ export class MockBackend implements Backend {
       steps: 1,
       approvals: 0,
       retries: 0,
+      conversationTitle: `Mock Conv ${this.conversationCount}`,
+    };
+  }
+
+  async getConversationTitle(): Promise<string | null> {
+    return `Mock Conv ${this.conversationCount}`;
+  }
+
+  async waitForIdle(_options?: ChatOptions): Promise<ChatResult> {
+    // Mock: 已经 idle，直接返回
+    return {
+      snapshot: "[Mock] Already idle",
+      state: "done",
+      elapsed: 0,
+      steps: 0,
+      approvals: 0,
+      retries: 0,
+      conversationTitle: `Mock Conv ${this.conversationCount}`,
     };
   }
 
