@@ -54,6 +54,7 @@ export function getProjectConfig(
     entry: "",
     intent: "Comprehensive code review",
     origin: "",
+    mainBranch: "main",
     ...cfg.project,
   };
 }
@@ -97,6 +98,12 @@ export function getBrainConfig(config?: CoackerConfig): Required<BrainConfig> {
       maxGapRounds: 2,
       maxSubTasks: 20,
       ...cfg.brain?.audit,
+    },
+    validate: {
+      maxReviewAttempts: 3,
+      excludeLabels: ["wontfix", "duplicate", "invalid"],
+      draftOnFailure: true,
+      ...cfg.brain?.validate,
     },
   };
 }

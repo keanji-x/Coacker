@@ -7,6 +7,7 @@ root = "."                                # 项目根目录
 entry = "packages/brain/src/index.ts"     # 入口文件 (分析起点)
 intent = "Comprehensive code review"      # 审查意图
 origin = ""                               # GitHub origin (owner/repo) — 用于自动提交 issue
+mainBranch = "main"                       # 主分支名 (默认 "main", 可设为 "master" 等)
 
 # ─── 输出配置 ───
 [output]
@@ -29,6 +30,11 @@ type = "audit"
 [brain.audit]
 maxGapRounds = 2                          # Gap Analyzer iteration limit (0 = disable)
 maxSubTasks = 3                           # Max sub-tasks per round
+
+[brain.validate]
+maxReviewAttempts = 3                     # Review-retry loop limit
+excludeLabels = ["wontfix", "duplicate", "invalid"]  # Blacklist: skip issues with these labels
+draftOnFailure = true                     # Mark draft on failure
 
 # ─── Player ───
 [player]

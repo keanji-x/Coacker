@@ -30,6 +30,8 @@ export interface ProjectConfig {
   intent?: string;
   /** GitHub origin (owner/repo) — 用于提交 issue */
   origin?: string;
+  /** 主分支名 (默认 "main", 用于 branch 切换基准) */
+  mainBranch?: string;
 }
 
 /** 输出配置 */
@@ -64,6 +66,8 @@ export interface BrainConfig {
   type?: string;
   /** 审查管道配置 */
   audit?: AuditConfig;
+  /** 验证管道配置 */
+  validate?: ValidateConfig;
 }
 
 /** 审查管道配置 — 仅管道调优参数 */
@@ -72,6 +76,16 @@ export interface AuditConfig {
   maxGapRounds?: number;
   /** 最大子任务数 */
   maxSubTasks?: number;
+}
+
+/** 验证管道配置 — Issue Validator Brain 调优参数 */
+export interface ValidateConfig {
+  /** Review-retry 循环上限 (default 3) */
+  maxReviewAttempts?: number;
+  /** 排除带有这些 label 的 issue (黑名单, default ["wontfix", "duplicate", "invalid"]) */
+  excludeLabels?: string[];
+  /** 失败后标记 draft (default true) */
+  draftOnFailure?: boolean;
 }
 
 /** Player 配置 */
@@ -90,6 +104,9 @@ export type TaskType =
   | "attack"
   | "gap_analysis"
   | "consolidation"
+  | "understand"
+  | "test_gen"
+  | "test_review"
   | "custom";
 
 /**
