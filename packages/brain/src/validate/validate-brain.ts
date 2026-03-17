@@ -24,7 +24,8 @@ import type {
   ReviewVerdict,
 } from "./types.js";
 import {
-  buildUnderstandAndGenTask,
+  buildUnderstandTask,
+  buildTestGenTask,
   buildReviewTask,
   buildRetryGenTask,
   buildPrCreateTask,
@@ -161,18 +162,21 @@ export class ValidateBrain {
   ): Promise<void> {
     this.log.info(`\n── Validating Issue #${issue.number}: ${issue.title} ──`);
 
-    // Phase 1: Understanding + Test Generation (同一对话)
+    // Phase 1a: Understanding (单独执行, 可短路)
     this._phase = "understanding";
     this.reviewAttempt = 0;
     this.persistCurrentState();
 
-    const genTask = buildUnderstandAndGenTask(issue);
-    const genResult = await player.executeTask(genTask);
-    this._history.push(genResult);
-    persistConversation(this.outputDir, genTask, genResult);
+    const understandTask = buildUnderstandTask(issue);
+    const understandResult = await player.executeTask(understandTask);
+    this._history.push(understandResult);
+    persistConversation(this.outputDir, understandTask, understandResult);
 
     // 检查 understanding 是否标记 untestable
-    const understandingSnapshot = getStepSnapshot(genResult, "understand");
+    const understandingSnapshot = getStepSnapshot(
+      understandResult,
+      "understand",
+    );
     const understanding = parseUnderstanding(understandingSnapshot);
 
     if (!understanding.testable) {
@@ -192,11 +196,16 @@ export class ValidateBrain {
       return;
     }
 
-    // 检查 test_gen 是否标记 untestable
+    // Phase 1b: Test Generation (续同一对话)
     this._phase = "test_generation";
     this.persistCurrentState();
 
-    const testGenSnapshot = getStepSnapshot(genResult, "test_gen");
+    const testGenTask = buildTestGenTask(issue, understandingSnapshot);
+    const testGenResult = await player.executeTask(testGenTask);
+    this._history.push(testGenResult);
+    persistConversation(this.outputDir, testGenTask, testGenResult);
+
+    const testGenSnapshot = getStepSnapshot(testGenResult, "test_gen");
     const testGenParsed = parseTestGenResult(testGenSnapshot);
 
     if (testGenParsed.untestable) {

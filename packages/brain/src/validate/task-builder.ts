@@ -8,15 +8,14 @@ import type { Task } from "@coacker/shared";
 import type { IssueItem, ReviewVerdict } from "./types.js";
 
 /**
- * 构造 Issue Understanding + Test Generation 任务 (同一对话, 2 steps)
+ * 构造 Issue Understanding 任务 (单步, 同一对话起点)
  *
- * Step 1: Analyst 理解 issue (作者视角)
- * Step 2: Generator 编写测试代码 (作者视角, 续)
+ * Step 1: Analyst 理解 issue, 判断 testability
  */
-export function buildUnderstandAndGenTask(issue: IssueItem): Task {
+export function buildUnderstandTask(issue: IssueItem): Task {
   return {
     id: `validate_${issue.number}`,
-    intention: `Understand and write tests for issue #${issue.number}: ${issue.title}`,
+    intention: `Understand issue #${issue.number}: ${issue.title}`,
     type: "understand",
     steps: [
       {
@@ -30,11 +29,37 @@ export function buildUnderstandAndGenTask(issue: IssueItem): Task {
           "Read the related source code, understand the issue, and output your analysis as JSON.",
         ].join("\n"),
       },
+    ],
+  };
+}
+
+/**
+ * 构造 Test Generation 任务 (新对话, 显式携带 understanding)
+ *
+ * Generator 收到 issue + understanding 分析结果, 编写测试代码
+ */
+export function buildTestGenTask(
+  issue: IssueItem,
+  understandingResult: string,
+): Task {
+  return {
+    id: `test_gen_${issue.number}`,
+    intention: `Generate tests for issue #${issue.number}: ${issue.title}`,
+    type: "test_gen",
+    steps: [
       {
         id: "test_gen",
         role: "test_generator",
         message: [
-          "Based on your understanding above, write test code that validates this issue.",
+          `## Issue #${issue.number}: ${issue.title}`,
+          "",
+          issue.body,
+          "",
+          "## Issue Analysis",
+          "",
+          understandingResult,
+          "",
+          "Based on the analysis above, write test code that validates this issue.",
           "First detect the project's test framework, then write and run the tests.",
         ].join("\n"),
       },
@@ -52,6 +77,34 @@ export function buildReviewTask(
   testCode: string,
   testOutput: string,
 ): Task {
+  const messageParts = [
+    `## Issue #${issue.number}: ${issue.title}`,
+    "",
+    issue.body,
+    "",
+    "## Generated Test Code",
+    "",
+    "```",
+    testCode,
+    "```",
+  ];
+
+  if (testOutput) {
+    messageParts.push(
+      "",
+      "## Test Execution Output",
+      "",
+      "```",
+      testOutput,
+      "```",
+    );
+  }
+
+  messageParts.push(
+    "",
+    "Review the test code and execution output. Output your verdict as JSON.",
+  );
+
   return {
     id: `review_${issue.number}`,
     intention: `Review test quality for issue #${issue.number}`,
@@ -60,25 +113,7 @@ export function buildReviewTask(
       {
         id: "review",
         role: "test_reviewer",
-        message: [
-          `## Issue #${issue.number}: ${issue.title}`,
-          "",
-          issue.body,
-          "",
-          "## Generated Test Code",
-          "",
-          "```",
-          testCode,
-          "```",
-          "",
-          "## Test Execution Output",
-          "",
-          "```",
-          testOutput,
-          "```",
-          "",
-          "Review the test code and execution output. Output your verdict as JSON.",
-        ].join("\n"),
+        message: messageParts.join("\n"),
       },
     ],
   };
@@ -94,6 +129,15 @@ export function buildRetryGenTask(
   reviewReport: ReviewVerdict,
   attempt: number,
 ): Task {
+  const feedbackBlock = [
+    "## Previous Review Feedback (REJECTED)",
+    "",
+    `**Logic Review:** ${reviewReport.logic_review}`,
+    `**Audit Review:** ${reviewReport.audit_review}`,
+    `**Issues:** ${reviewReport.issues.join("; ")}`,
+    `**Summary:** ${reviewReport.summary}`,
+  ].join("\n");
+
   return {
     id: `retry_${issue.number}_${attempt}`,
     intention: `Retry test generation for issue #${issue.number} (attempt ${attempt})`,
@@ -107,12 +151,7 @@ export function buildRetryGenTask(
           "",
           issue.body,
           "",
-          "## Previous Review Feedback (REJECTED)",
-          "",
-          `**Logic Review:** ${reviewReport.logic_review}`,
-          `**Audit Review:** ${reviewReport.audit_review}`,
-          `**Issues:** ${reviewReport.issues.join("; ")}`,
-          `**Summary:** ${reviewReport.summary}`,
+          feedbackBlock,
           "",
           "Re-analyze the issue with the reviewer's feedback in mind.",
         ].join("\n"),
@@ -123,6 +162,9 @@ export function buildRetryGenTask(
         message: [
           "Based on your updated understanding and the reviewer's feedback,",
           "write improved test code that addresses the issues raised.",
+          "",
+          feedbackBlock,
+          "",
           "First detect the project's test framework, then write and run the tests.",
         ].join("\n"),
       },

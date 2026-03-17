@@ -172,6 +172,7 @@ export class Player {
         const chatResult = await this._backend.chat(prompt, {
           autoAccept: true,
           timeout: this.taskTimeout,
+          outputTag: `${task.id}__${step.id}`,
         });
 
         conv.messageCount++;
@@ -365,6 +366,7 @@ export class Player {
         const chatResult = await this._backend.chat(prompt, {
           autoAccept: true,
           timeout: this.taskTimeout,
+          outputTag: `${task.id}__${step.id}`,
         });
 
         conv.messageCount++;

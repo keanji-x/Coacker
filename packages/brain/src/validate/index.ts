@@ -27,7 +27,8 @@ export {
 
 // ── Sub-modules (advanced usage) ──
 export {
-  buildUnderstandAndGenTask,
+  buildUnderstandTask,
+  buildTestGenTask,
   buildReviewTask,
   buildRetryGenTask,
   buildPrCreateTask,

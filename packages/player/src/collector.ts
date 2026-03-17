@@ -28,6 +28,7 @@ export function collectStepResult(
     role,
     prompt,
     snapshot: chatResult.snapshot,
+    response: chatResult.response,
     status,
     elapsed: chatResult.elapsed,
     steps: chatResult.steps,

@@ -6,6 +6,8 @@
  */
 
 import { chromium, type Browser, type Page } from "playwright";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type {
   ChatResult,
   ConversationInfo,
@@ -28,6 +30,7 @@ export class Antigravity {
   private endpointUrl: string;
   private timeout: number;
   private _humanize: boolean;
+  private _outputDir: string;
 
   private browser: Browser | null = null;
   private _page: Page | null = null;
@@ -40,6 +43,7 @@ export class Antigravity {
     this.endpointUrl = options.endpointUrl ?? "http://localhost:9222";
     this.timeout = options.timeout ?? 30_000;
     this._humanize = options.humanize ?? true;
+    this._outputDir = options.outputDir ?? `/tmp/coacker-output/${process.pid}`;
   }
 
   // ─── 连接管理 ───────────────────────────────
@@ -323,6 +327,8 @@ export class Antigravity {
       pollInterval?: number;
       idleThreshold?: number;
       maxRetries?: number;
+      outputTag?: string;
+      outputRetries?: number;
     } = {},
   ): Promise<ChatResult> {
     const pg = this.page; // throws if not connected
@@ -332,6 +338,17 @@ export class Antigravity {
     const pollInterval = options.pollInterval ?? 2000;
     const _idleThreshold = options.idleThreshold ?? 3000;
     const maxRetries = options.maxRetries ?? 2;
+    const outputTag = options.outputTag;
+    const outputRetries = options.outputRetries ?? 3;
+
+    // File output: compute path and inject instruction
+    let outputFile: string | undefined;
+    let actualMessage = message;
+    if (outputTag) {
+      mkdirSync(this._outputDir, { recursive: true });
+      outputFile = join(this._outputDir, `${outputTag}.md`);
+      actualMessage = this.injectOutputInstruction(message, outputFile);
+    }
 
     const start = Date.now();
     let approvals = 0;
@@ -344,13 +361,13 @@ export class Antigravity {
     if (this._humanize) await microPause();
 
     if (this._humanize) {
-      if (message.length > 200) {
-        await humanTypeFast(pg, message);
+      if (actualMessage.length > 200) {
+        await humanTypeFast(pg, actualMessage);
       } else {
-        await humanType(pg, message);
+        await humanType(pg, actualMessage);
       }
     } else {
-      await pg.keyboard.type(message, { delay: 10 });
+      await pg.keyboard.type(actualMessage, { delay: 10 });
     }
 
     if (this.currentConv) {
@@ -425,6 +442,27 @@ export class Antigravity {
     const afterSnapshot = await snapshotPanel(pg);
     const elapsed = (Date.now() - start) / 1000;
     const isTimeout = elapsed >= timeout;
+
+    // 5. File output: read file, check finished marker, retry if needed
+    if (outputFile) {
+      const fileResult = await this.readOutputFile(
+        pg,
+        outputFile,
+        outputRetries,
+        timeout,
+        start,
+      );
+      return {
+        snapshot: afterSnapshot,
+        response: fileResult.content,
+        responseFile: fileResult.found ? outputFile : undefined,
+        state: isTimeout ? "timeout" : fileResult.complete ? "done" : "error",
+        elapsed: (Date.now() - start) / 1000,
+        steps,
+        approvals,
+        retries,
+      };
+    }
 
     return {
       snapshot: afterSnapshot,
@@ -537,7 +575,140 @@ export class Antigravity {
     return this.page.evaluate(fn);
   }
 
+  /** 输出目录路径 */
+  get outputDir(): string {
+    return this._outputDir;
+  }
+
   // ─── Private ────────────────────────────────
+
+  /**
+   * 在消息末尾注入写文件指令
+   */
+  private injectOutputInstruction(message: string, outputFile: string): string {
+    return [
+      message,
+      "",
+      "---",
+      `[IMPORTANT] Write your complete response to this file: ${outputFile}`,
+      `When you are completely finished, write the word "finished" as the very last line of the file.`,
+      `Do NOT include any other text on the last line besides "finished".`,
+    ].join("\n");
+  }
+
+  /**
+   * 读取输出文件,检查 finished 标记,必要时重试
+   */
+  private async readOutputFile(
+    pg: Page,
+    outputFile: string,
+    maxRetries: number,
+    timeout: number,
+    startTime: number,
+  ): Promise<{ content: string; found: boolean; complete: boolean }> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 检查超时
+      if (Date.now() - startTime >= timeout * 1000) {
+        break;
+      }
+
+      // 读文件
+      if (existsSync(outputFile)) {
+        const raw = readFileSync(outputFile, "utf-8");
+        const lines = raw.trimEnd().split("\n");
+        const lastLine = lines[lines.length - 1]?.trim().toLowerCase();
+
+        if (lastLine === "finished") {
+          // 成功: 剥掉 finished 行, 返回干净内容
+          const content = lines.slice(0, -1).join("\n").trimEnd();
+          return { content, found: true, complete: true };
+        }
+
+        // 文件存在但没有 finished 标记
+        if (attempt < maxRetries) {
+          console.warn(
+            `[ag] Output file missing 'finished' marker (attempt ${attempt + 1}/${maxRetries}), retrying...`,
+          );
+          // 发送续写提示
+          await focusChatInput(pg, this._humanize);
+          const retryMsg = `你还没有完成写入文件 ${outputFile}。请继续完成写入,并确保文件最后一行只写 "finished"。`;
+          if (this._humanize) {
+            await humanTypeFast(pg, retryMsg);
+          } else {
+            await pg.keyboard.type(retryMsg, { delay: 10 });
+          }
+          await pg.keyboard.press(Keys.SEND_MESSAGE);
+          await sleep(1000);
+
+          // 等 AI 完成
+          await this.waitForIdleInternal(pg, timeout, startTime);
+          continue;
+        }
+
+        // 最后一次: 返回不完整内容
+        return { content: raw, found: true, complete: false };
+      }
+
+      // 文件不存在
+      if (attempt < maxRetries) {
+        console.warn(
+          `[ag] Output file not found (attempt ${attempt + 1}/${maxRetries}), retrying...`,
+        );
+        await focusChatInput(pg, this._humanize);
+        const retryMsg = `请将你的回复写入文件 ${outputFile},并在文件最后一行写 "finished"。`;
+        if (this._humanize) {
+          await humanTypeFast(pg, retryMsg);
+        } else {
+          await pg.keyboard.type(retryMsg, { delay: 10 });
+        }
+        await pg.keyboard.press(Keys.SEND_MESSAGE);
+        await sleep(1000);
+
+        await this.waitForIdleInternal(pg, timeout, startTime);
+        continue;
+      }
+    }
+
+    // 所有重试用尽
+    if (existsSync(outputFile)) {
+      return {
+        content: readFileSync(outputFile, "utf-8"),
+        found: true,
+        complete: false,
+      };
+    }
+    return { content: "", found: false, complete: false };
+  }
+
+  /**
+   * 内部 waitForIdle (复用状态机循环,不暴露为 public)
+   */
+  private async waitForIdleInternal(
+    pg: Page,
+    timeout: number,
+    startTime: number,
+  ): Promise<void> {
+    while (Date.now() - startTime < timeout * 1000) {
+      const state = await detectState(pg);
+
+      if (state === AgentState.WAITING_APPROVAL) {
+        await clickAccept(pg);
+        await sleep(1000);
+        continue;
+      }
+
+      if (state === AgentState.IDLE) {
+        await sleep(200);
+        return;
+      }
+
+      if (state === AgentState.ERROR_TERMINATED) {
+        return; // 让调用者处理
+      }
+
+      await sleep(2000);
+    }
+  }
 
   private async listPagesHTTP(): Promise<CDPPageInfo[]> {
     const url = `${this.endpointUrl}/json`;

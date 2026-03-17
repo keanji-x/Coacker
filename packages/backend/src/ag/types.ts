@@ -14,6 +14,10 @@ export enum AgentState {
 export interface ChatResult {
   /** 面板全量快照 (innerText, debug/日志用) */
   snapshot: string;
+  /** 文件内容 (primary response). undefined if outputTag not set */
+  response?: string;
+  /** 实际文件路径. undefined if outputTag not set */
+  responseFile?: string;
   /** 最终状态 */
   state: "done" | "timeout" | "error" | "waiting_approval";
   /** 耗时 (秒) */
@@ -41,6 +45,8 @@ export interface AntigravityOptions {
   timeout?: number;
   /** 是否模拟人类操作节奏 */
   humanize?: boolean;
+  /** 文件输出基目录 (default: /tmp/coacker-output/{pid}/) */
+  outputDir?: string;
 }
 
 /** CDP /json 接口返回的页面信息 */
