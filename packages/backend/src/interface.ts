@@ -14,12 +14,18 @@ export interface BackendOptions {
   timeout?: number;
   /** 模拟人类操作节奏 */
   humanize?: boolean;
+  /** 文件输出基目录 (default: /tmp/coacker-output/{pid}/) */
+  outputDir?: string;
 }
 
 /** chat() 返回结果 */
 export interface ChatResult {
   /** 面板全量快照 (innerText, debug/日志用) */
   snapshot: string;
+  /** 文件内容 (primary response). undefined if outputTag not set */
+  response?: string;
+  /** 实际文件路径. undefined if outputTag not set */
+  responseFile?: string;
   /** 最终状态 */
   state: "done" | "timeout" | "error" | "waiting_approval";
   /** 耗时 (秒) */
@@ -46,6 +52,10 @@ export interface ChatOptions {
   idleThreshold?: number;
   /** "Agent terminated" 后最大自动重试次数 (default: 2) */
   maxRetries?: number;
+  /** 文件输出标签 — 设置后 Backend 自动注入写文件指令 */
+  outputTag?: string;
+  /** 文件不完整时的最大重试次数 (default: 3) */
+  outputRetries?: number;
 }
 
 /**

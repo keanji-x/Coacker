@@ -152,6 +152,8 @@ export interface StepResult {
   prompt: string;
   /** 面板全量快照 (debug/日志用) */
   snapshot: string;
+  /** 文件内容 (primary response). Falls back to snapshot if unavailable */
+  response?: string;
   /** 完成状态 */
   status: "success" | "error" | "skipped";
   /** 耗时 (秒) */

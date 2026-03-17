@@ -9,6 +9,7 @@
  */
 
 import { MockBackend } from "@coacker/backend";
+import type { ChatOptions } from "@coacker/backend";
 import {
   ValidateBrain,
   ISSUE_ANALYST_SYSTEM_PROMPT,
@@ -30,7 +31,8 @@ async function main() {
 
     // 1. Understanding (analyst)
     {
-      snapshot: JSON.stringify({
+      snapshot: '[debug]',
+      response: JSON.stringify({
         summary: "Config spread order causes nested defaults to be overwritten",
         scope: "packages/shared/src/config.ts",
         expected_vs_actual:
@@ -43,7 +45,8 @@ async function main() {
     },
     // 2. Test generation (generator)
     {
-      snapshot: `import { describe, it, expect } from 'vitest';
+      snapshot: '[debug]',
+      response: `import { describe, it, expect } from 'vitest';
 import { loadConfig } from '../src/config';
 
 describe('Config spread order', () => {
@@ -59,7 +62,8 @@ describe('Config spread order', () => {
     },
     // 3. Review #1: REJECT
     {
-      snapshot: JSON.stringify({
+      snapshot: '[debug]',
+      response: JSON.stringify({
         verdict: "REJECT",
         logic_review:
           "Test only checks if timeout is defined, does not test the actual spread order bug",
@@ -77,7 +81,8 @@ describe('Config spread order', () => {
     },
     // 4. Retry: Re-understand with feedback (analyst)
     {
-      snapshot: JSON.stringify({
+      snapshot: '[debug]',
+      response: JSON.stringify({
         summary:
           "Config spread order bug: when user provides partial nested config, defaults get lost",
         scope: "packages/shared/src/config.ts - getBackendConfig()",
@@ -91,7 +96,8 @@ describe('Config spread order', () => {
     },
     // 5. Retry: Improved test generation (generator)
     {
-      snapshot: `import { describe, it, expect } from 'vitest';
+      snapshot: '[debug]',
+      response: `import { describe, it, expect } from 'vitest';
 import { getBackendConfig } from '../src/config';
 
 describe('Config spread order bug', () => {
@@ -110,7 +116,8 @@ describe('Config spread order bug', () => {
     },
     // 6. Review #2: ACCEPT
     {
-      snapshot: JSON.stringify({
+      snapshot: '[debug]',
+      response: JSON.stringify({
         verdict: "ACCEPT",
         logic_review:
           "Test correctly validates partial config override preserves defaults",
@@ -124,7 +131,8 @@ describe('Config spread order bug', () => {
     },
     // 7. PR Create
     {
-      snapshot:
+      snapshot: '[debug]',
+      response:
         "Created PR: https://github.com/test/repo/pull/42\nBranch: test/validate-issue-1",
       state: "done",
       delay: 50,
@@ -134,7 +142,8 @@ describe('Config spread order bug', () => {
 
     // 8. Understanding: untestable
     {
-      snapshot: JSON.stringify({
+      snapshot: '[debug]',
+      response: JSON.stringify({
         summary: "UI rendering issue in dark mode",
         scope: "frontend/components/theme.tsx",
         expected_vs_actual: "Dark mode colors are wrong on mobile Safari",
@@ -149,6 +158,7 @@ describe('Config spread order bug', () => {
     // 9. Test gen (won't reach for untestable issue, but MockBackend needs something in queue)
     {
       snapshot: '{"untestable": true, "reason": "Not reachable"}',
+      response: '{"untestable": true, "reason": "Not reachable"}',
       state: "done",
       delay: 50,
     },
@@ -219,6 +229,50 @@ describe('Config spread order bug', () => {
 
   await player.disconnect();
 
+  // ─── Prompt Flow Dump ───
+  console.log("\n╔══════════════════════════════════════════╗");
+  console.log("║       VALIDATE PROMPT FLOW DUMP          ║");
+  console.log("╚══════════════════════════════════════════╝\n");
+
+  const chatHistory = backend.chatHistory;
+  for (let i = 0; i < chatHistory.length; i++) {
+    const entry = chatHistory[i];
+    const prompt = entry.message;
+    const opts = entry.options as ChatOptions | undefined;
+    const tag = opts?.outputTag ?? "(none)";
+
+    // 角色检测
+    const role = prompt.includes("Issue Analyst")
+      ? "IssueAnalyst"
+      : prompt.includes("Test Generator")
+        ? "TestGenerator"
+        : prompt.includes("Test Reviewer")
+          ? "TestReviewer"
+          : prompt.includes("create PR")
+            ? "PRCreator"
+            : "(unknown)";
+
+    // 关键上下文检测
+    const hasIssueContext = prompt.includes("Issue #") || prompt.includes("issue_number");
+    const hasPriorFeedback = prompt.includes("REJECT") || prompt.includes("Previous review");
+    const hasTestCode = prompt.includes("import {") || prompt.includes("describe(");
+
+    console.log(`── Step ${i + 1}/${chatHistory.length} ────────────────────`);
+    console.log(`  Tag:             ${tag}`);
+    console.log(`  Role:            ${role}`);
+    console.log(`  Has issue ctx:   ${hasIssueContext ? "✅" : "—"}`);
+    console.log(`  Prior feedback:  ${hasPriorFeedback ? "✅" : "—"}`);
+    console.log(`  Has test code:   ${hasTestCode ? "✅" : "—"}`);
+    console.log(`  ┌─ FULL PROMPT ─────────────────────────`);
+    // 按行打印完整 prompt，缩进
+    const lines = prompt.split("\n");
+    for (const line of lines) {
+      console.log(`  │ ${line}`);
+    }
+    console.log(`  └───────────────────────────────────────`);
+    console.log("");
+  }
+
   // ─── Assertions ───
   const ok = (cond: boolean, msg: string) => {
     if (cond) console.log(`  ✅ ${msg}`);
@@ -281,6 +335,36 @@ describe('Config spread order bug', () => {
   ok(
     state.results.length === 2,
     `state.json results: ${state.results.length}`,
+  );
+
+  // ── Flow Verification ──
+  console.log("\n--- Flow Verification ---");
+  const tags = backend.chatHistory.map((h: { options?: ChatOptions }) => h.options?.outputTag ?? "(none)");
+  ok(tags[0].includes("validate_1__understand"), `Step 1 tag: ${tags[0]}`);
+  ok(tags[1].includes("test_gen_1__test_gen"), `Step 2 tag: ${tags[1]}`);
+  ok(tags[2].includes("review_1__review"), `Step 3 tag: ${tags[2]}`);
+  // Steps 4-6: retry cycle (understand → test_gen → review)
+  ok(tags[3].includes("understand"), `Step 4 tag (retry understand): ${tags[3]}`);
+  ok(tags[4].includes("test_gen"), `Step 5 tag (retry test_gen): ${tags[4]}`);
+  ok(tags[5].includes("review"), `Step 6 tag (retry review): ${tags[5]}`);
+  // Step 7: PR create
+  ok(tags[6].includes("pr_create"), `Step 7 tag (pr_create): ${tags[6]}`);
+  // Step 8: Issue #2 understand
+  ok(tags[7].includes("validate_2__understand"), `Step 8 tag: ${tags[7]}`);
+
+  // All steps have outputTag
+  ok(
+    tags.every((t: string) => t !== "(none)"),
+    `All ${tags.length} steps have outputTag set`,
+  );
+
+  // Response-based data: understanding should come from response, not snapshot
+  const issue1Result = JSON.parse(
+    readFileSync(join(validateDir, "results", "issue_1.json"), "utf-8"),
+  );
+  ok(
+    issue1Result.outcome === "accepted",
+    "Issue 1 result file confirms accepted",
   );
 
   console.log("\n=== Done ===");

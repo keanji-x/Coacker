@@ -10,6 +10,8 @@ import type { Backend, ChatResult, ChatOptions } from "./interface.js";
 export interface MockResponse {
   /** 回复文本 (模拟快照) */
   snapshot: string;
+  /** 模拟文件内容 (primary response) */
+  response?: string;
   /** 状态 */
   state?: ChatResult["state"];
   /** 延迟 (ms) */
@@ -77,6 +79,10 @@ export class MockBackend implements Backend {
 
     return {
       snapshot: mockResp.snapshot,
+      response: mockResp.response,
+      responseFile: mockResp.response
+        ? `/tmp/coacker-mock/${this._callIndex - 1}.md`
+        : undefined,
       state: mockResp.state ?? "done",
       elapsed: (mockResp.delay ?? 10) / 1000,
       steps: 1,
@@ -94,6 +100,8 @@ export class MockBackend implements Backend {
     // Mock: 已经 idle，直接返回
     return {
       snapshot: "[Mock] Already idle",
+      response: undefined,
+      responseFile: undefined,
       state: "done",
       elapsed: 0,
       steps: 0,

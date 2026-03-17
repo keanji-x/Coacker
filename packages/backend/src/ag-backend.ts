@@ -33,6 +33,7 @@ export class AgBackend implements Backend {
       endpointUrl: options.endpointUrl,
       timeout: options.timeout,
       humanize: options.humanize,
+      outputDir: options.outputDir,
     });
     this._pageTitle = options.windowTitle ?? options.pageTitle ?? "";
   }
@@ -71,11 +72,15 @@ export class AgBackend implements Backend {
       pollInterval: options?.pollInterval,
       idleThreshold: options?.idleThreshold,
       maxRetries: options?.maxRetries,
+      outputTag: options?.outputTag,
+      outputRetries: options?.outputRetries,
     });
 
     // AgChatResult → Backend ChatResult (接口对齐)
     return {
       snapshot: agResult.snapshot,
+      response: agResult.response,
+      responseFile: agResult.responseFile,
       state:
         agResult.state === "waiting_approval"
           ? "waiting_approval"
@@ -107,6 +112,8 @@ export class AgBackend implements Backend {
     });
     return {
       snapshot: agResult.snapshot,
+      response: agResult.response,
+      responseFile: agResult.responseFile,
       state: agResult.state,
       elapsed: agResult.elapsed,
       steps: agResult.steps,
