@@ -1,0 +1,15 @@
+{
+  "name": "@coacker/brain",
+  "version": "0.1.0",
+  "description": "Brain — central coordinator: knowledge, task dispatch, consolidation",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coacker/shared": "workspace:*",
+    "@coacker/player": "workspace:*"
+  }
+}

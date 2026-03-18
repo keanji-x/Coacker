@@ -1,70 +1,122 @@
 # Coacker — AI Heuristic Code Review Agent
 
-Multi-agent code review system powered by LLM backends (Claude CLI / LangChain). Automatically explores your codebase, analyzes implementation details, and performs security audits with role-separated agents.
+Multi-agent code review system that operates through IDE automation. Automatically explores your codebase, analyzes implementation details, performs security audits with role-separated agents, and creates GitHub issues for critical findings.
 
 ## Architecture
 
 ```
-Phase 1:   Intention (with tools) → Explores project → Splits into review tasks
-Phase 2:   Implement × N (parallel) → Describes code implementation facts
-Phase 2.5: Gap Analyzer → Finds uncovered areas → Spawns new tasks (iterative)
-Phase 3:   Review + Attack × N (parallel) → Code quality + Security audit
+Brain (state machine)  →  Player (task executor)  →  Backend (IDE automation via CDP)
+```
+
+### Audit Pipeline
+
+```
+Phase 1:     Intention       → Explores project → Splits into review sub-tasks
+Per task:    Implement       → Describes code implementation (facts only)
+              → Review      → Code quality audit (Blue Team)  [same conversation]
+              → Attack      → Business logic flaws (Red Team) [same conversation]
+              → Issue       → Creates GitHub issues via `gh` CLI (Critical/High only)
+Phase 2.5:   Gap Analyzer   → Finds uncovered areas → Spawns new tasks (iterative)
+Phase 3:     Consolidation  → AI synthesizes executive summary
+```
+
+### Issue Validator Pipeline
+
+```
+Preflight:   Git check        → Ensure clean working tree
+Per issue:   Checkout branch  → git checkout -b issue_validator/issue{N}
+             Understand       → Read issue + source code, assess testability
+             Test Gen         → Write test code (author perspective)
+             Review           → Independent review (new conversation, reviewer perspective)
+             → ACCEPT         → Commit + gh pr create
+             → REJECT         → Retry (max 3) or mark draft
+             Cleanup          → Ensure clean state → git checkout mainBranch
 ```
 
 ### Agent Roles
 
-| Role | Job | Doesn't Do |
-|------|-----|------------|
-| **Intention** | Explores project with `tree`/`find`/`cat`, creates task breakdown | — |
-| **Implement** | Describes execution paths, state changes, dependencies (facts only) | No opinions or auditing |
-| **Reviewer** (Blue Team) | Engineering quality: leaks, concurrency, validation, naming | No business logic |
-| **Attacker** (Red Team) | Business logic flaws: auth bypass, state inconsistency, reentrancy | No style issues |
-| **Gap Analyzer** | Reviews all implement reports, identifies gaps, deduplicates | — |
+| Role | Job | Focus |
+|------|-----|-------|
+| **Intention** | Explores project, creates task breakdown | Project structure |
+| **Implement** | Describes execution paths, state changes, dependencies | Facts only |
+| **Reviewer** (Blue Team) | Engineering quality: leaks, concurrency, validation | Code hygiene |
+| **Attacker** (Red Team) | Business logic flaws: auth bypass, state inconsistency | Fatal logic bugs |
+| **Issue Proposer** | Creates GitHub issues directly via `gh` CLI | Critical/High findings |
+| **Gap Analyzer** | Reviews reports, identifies gaps, deduplicates | Completeness |
+| **Consolidator** | Synthesizes all findings into executive summary | Final report |
 
-### 4-Layer Design
+### Packages
 
 ```
-Backend (LLM interface)  →  Agent (role + prompt)  →  Task (agent + context)  →  TaskQueue (DAG scheduler)
+packages/
+├── shared/    — Types, config, logger
+├── backend/   — IDE automation (Antigravity CDP + Mock)
+├── player/    — Task execution (multi-step conversation management)
+├── brain/     — State machine orchestrator (Audit Brain + Issue Validator Brain)
+└── cli/       — CLI entry point + E2E tests
 ```
+
+### Design Docs
+
+Detailed design documents for each brain:
+- [Audit Brain](packages/brain/doc/audit-brain.md) — Multi-agent code review pipeline
+- [Issue Validator Brain](packages/brain/doc/issue-validator-brain.md) — Test generation & validation pipeline
 
 ## Quick Start
 
 ```bash
 # 1. Install dependencies
-pip install uv
-uv venv && source .venv/bin/activate
-uv pip install rich pydantic tomli pathspec
+pnpm install
 
 # 2. Configure
 cp config.example.toml config.toml
-# Edit config.toml: set project_path, backend, proxy settings, etc.
+# Edit config.toml — set project entry file, intent, and origin
 
-# 3. Run
-PYTHONPATH=. .venv/bin/python cli/main.py
+# 3. Run audit
+npx tsx packages/cli/src/main.ts
 ```
+
+### Prerequisites
+
+- Node.js ≥ 18
+- `gh` CLI authenticated (for auto issue creation)
+- IDE with CDP debug port enabled (e.g. Cursor with `--remote-debugging-port=9222`)
 
 ## Usage
 
-```bash
-# Full project audit (no entry file needed)
-PYTHONPATH=. .venv/bin/python cli/main.py \
-  -p /path/to/project \
-  --intent "security audit for smart contracts"
+```typescript
+import { AgBackend } from '@coacker/backend';
+import { Brain, INTENTION_SYSTEM_PROMPT, IMPLEMENTATION_SYSTEM_PROMPT,
+  REVIEWER_SYSTEM_PROMPT, ATTACKER_SYSTEM_PROMPT, ISSUE_PROPOSER_SYSTEM_PROMPT,
+  GAP_ANALYZER_SYSTEM_PROMPT, CONSOLIDATION_SYSTEM_PROMPT } from '@coacker/brain';
+import { Player } from '@coacker/player';
 
-# With specific entry file
-PYTHONPATH=. .venv/bin/python cli/main.py \
-  -p /path/to/project \
-  --entry src/main.sol \
-  --intent "review fund transfer logic"
+const origin = 'owner/repo';
 
-# Intent is optional — defaults to comprehensive review
-PYTHONPATH=. .venv/bin/python cli/main.py -p /path/to/project
+// 1. Setup
+const backend = new AgBackend({ endpointUrl: 'http://localhost:9222', humanize: true });
+const player = new Player({
+  backend,
+  taskTimeout: 300,
+  rolePrompts: {
+    intention: INTENTION_SYSTEM_PROMPT,
+    implementer: IMPLEMENTATION_SYSTEM_PROMPT,
+    reviewer: REVIEWER_SYSTEM_PROMPT,
+    attacker: ATTACKER_SYSTEM_PROMPT,
+    issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(origin),
+    gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
+    consolidator: CONSOLIDATION_SYSTEM_PROMPT,
+  },
+});
+const brain = new Brain({
+  project: { root: '.', entry: 'src/main.ts', intent: 'Review this project', origin },
+  audit: { maxGapRounds: 1, maxSubTasks: 5 },
+});
 
-# Verbose mode (show step-by-step logs)
-PYTHONPATH=. .venv/bin/python cli/main.py -v
-
-# Custom output directory
-PYTHONPATH=. .venv/bin/python cli/main.py -o ./my_reports
+// 2. Connect + Run
+await player.connect('MyProject');
+const report = await brain.run(player);
+await player.disconnect();
 ```
 
 ## Configuration
@@ -72,73 +124,68 @@ PYTHONPATH=. .venv/bin/python cli/main.py -o ./my_reports
 All settings in `config.toml`:
 
 ```toml
-[backend]
-type = "bash"                    # "bash" (CLI) or "langchain" (SDK)
-
-[bash]
-llm_command = "claude --print"   # Any CLI LLM command
-timeout = 300                    # Seconds per LLM call
-allowed_commands = ["cat", "grep", "find", "tree", "wc", "git", "ls"]
-
-[bash.env]                       # Environment variables for subprocess
-HTTP_PROXY = "http://127.0.0.1:10809"
-
-[pipeline]
-max_concurrency = 4              # Parallel task limit
-max_gap_rounds = 2               # Gap Analyzer iteration limit (0 = disable)
-
-[review]
-project_path = "/path/to/project"
-entry_file = ""                  # Optional: leave empty for full project scan
-intent = ""                      # Optional: leave empty for comprehensive review
+[project]
+root = "."
+entry = "src/main.ts"
+intent = "Comprehensive code review"
+origin = "owner/repo"             # GitHub origin — enables auto issue creation
+mainBranch = "main"               # Main branch name (default "main")
 
 [output]
-output_dir = "./output"          # Reports directory
+dir = "./output"
+
+[backend]
+type = "ag"
+
+[backend.ag]
+endpointUrl = "http://localhost:9222"
+timeout = 30000
+humanize = true
+windowTitle = "MyProject"
+
+[brain]
+type = "audit"                    # "audit" or "validate"
+
+[brain.audit]
+maxGapRounds = 2
+maxSubTasks = 20
+
+[brain.validate]
+maxReviewAttempts = 3
+excludeLabels = ["wontfix", "duplicate", "invalid"]
+draftOnFailure = true
+
+[player]
+taskTimeout = 300
 ```
+
+### Key Config Options
+
+| Key | Description |
+|-----|-------------|
+| `project.origin` | GitHub `owner/repo` — when set, AI creates issues via `gh issue create` |
+| `project.entry` | Entry file for analysis (AI starts exploration here) |
+| `project.mainBranch` | Main branch name, used as base for feature branches (default `main`) |
+| `brain.type` | Brain type: `audit` (code review) or `validate` (issue verification) |
+| `brain.audit.maxGapRounds` | How many gap analysis iterations (0 = disable) |
+| `brain.audit.maxSubTasks` | Max parallel review sub-tasks |
+| `brain.validate.maxReviewAttempts` | Max review-retry loops per issue (default 3) |
+| `brain.validate.excludeLabels` | Skip issues with these labels |
+| `backend.ag.humanize` | Simulate human typing rhythm (avoids bot detection) |
 
 ## Output
 
-All reports are saved to `output_dir/`:
+Results are saved to `output/` directory:
 
 ```
 output/
-├── progress.json                 # Checkpoint for interrupt-resume
-├── intention.md                  # Task breakdown
-├── implement_*.md                # Implementation analysis per task
-├── gap_analysis_round_*.md       # Gap analyzer results
-├── review_*.md                   # Code quality review per task
-├── attack_*.md                   # Security audit per task
-└── report.md                     # Final consolidated report
+├── state.json              — Brain state (resume support)
+├── conversations/          — Full conversation logs per task
+├── reports/                — Per-task structured reports
+└── report.md               — Final consolidated audit report
 ```
 
-## Interrupt & Resume
-
-Pipeline supports checkpoint-based resume. If interrupted (Ctrl+C), just re-run the same command — completed tasks are skipped automatically:
-
-```bash
-# First run (interrupted)
-PYTHONPATH=. .venv/bin/python cli/main.py
-# ^C
-
-# Resume — skips completed tasks
-PYTHONPATH=. .venv/bin/python cli/main.py
-# ↻ Resuming from checkpoint (25/36 tasks completed)
-# ⏭ intention (cached)
-# ⏭ implement_genesis (cached)
-# ▶ attack_runtime_config starting...  ← continues from here
-```
-
-To start fresh: delete `output/progress.json` or use a different `--output-dir`.
-
-## Features
-
-- **Project-wide audit**: Agents freely explore the entire project with tools
-- **Parallel execution**: TaskQueue with DAG-based scheduling
-- **Gap analysis**: Iterative loop to catch missed code paths
-- **Deduplication**: Removes redundant analysis across tasks
-- **Exponential backoff retry**: Handles rate limits and timeouts (3 attempts)
-- **Checkpoint resume**: `progress.json` tracks completion for interrupt-safe runs
-- **Configurable backend**: Swap between Claude CLI, OpenAI SDK, or any LLM CLI tool
+Each step captures a **panel snapshot** (full `innerText` of the IDE panel) for debugging and audit trail purposes.
 
 ## License
 
