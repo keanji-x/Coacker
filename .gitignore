@@ -24,4 +24,7 @@ config.toml
 
 # uv
 uv.lock
+output/.venv/
+config.toml
 output/
+__pycache__/

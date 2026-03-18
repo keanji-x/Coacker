@@ -72,6 +72,7 @@ class Agent:
         output_schema: Type[BaseModel] | None = None,
         temperature: float = 0.3,
         max_steps: int = 15,
+        read_only: bool = True,
     ):
         self.role = role
         self.system_prompt = system_prompt
@@ -81,6 +82,7 @@ class Agent:
         self.output_schema = output_schema
         self.temperature = temperature
         self.max_steps = max_steps
+        self.read_only = read_only
 
     def invoke(self, user_message: str, cwd: str = "") -> AgentResult:
         """单次调用（无工具），适合 intention/reviewer/attacker"""
@@ -123,7 +125,7 @@ class Agent:
         steps: list[StepLog] = []
         files_accessed: list[str] = []
 
-        tools_desc = get_tools_description(self.tools)
+        tools_desc = get_tools_description(self.tools, cwd)
 
         react_instruction = f"""{self.system_prompt}
 
@@ -180,9 +182,21 @@ Maximum {self.max_steps} tool calls allowed."""
                     duration_ms=response.duration_ms,
                 ))
 
-                # 执行工具
+                # 执行工具 (并检查 RBAC)
                 step_num += 1
-                tool_result = execute_tool(tool_name, tool_args, cwd)
+                
+                is_ro = __import__('tools.bash_tools', fromlist=['']).is_tool_read_only(tool_name)
+                if self.read_only and not is_ro:
+                    from tools.bash_tools import BashResult
+                    tool_result = BashResult(
+                        command=f"{tool_name} {tool_args}",
+                        stdout="",
+                        stderr=f"[Security Denied] Agent '{self.role}' is restricted to Read-Only mode and cannot execute '{tool_name}'.",
+                        returncode=403,
+                        duration_ms=0
+                    )
+                else:
+                    tool_result = execute_tool(tool_name, tool_args, cwd)
 
                 if tool_name == "cat" and tool_result.returncode == 0:
                     files_accessed.append(tool_args)

@@ -156,6 +156,7 @@ TOOL_REGISTRY = {
     "cat": {
         "description": "Read file contents. Usage: cat <filepath>",
         "fn": lambda args, cwd: bash_cat(args, cwd),
+        "read_only": True,
     },
     "grep": {
         "description": "Search for pattern in files. Usage: grep <pattern> <path>",
@@ -164,27 +165,95 @@ TOOL_REGISTRY = {
             args.split(" ", 1)[1] if " " in args else ".",
             cwd,
         ),
+        "read_only": True,
     },
     "find": {
         "description": "Find files by name pattern. Usage: find <pattern>",
         "fn": lambda args, cwd: bash_find(args, cwd),
+        "read_only": True,
     },
     "tree": {
         "description": "Show directory structure. Usage: tree [path] [depth]",
         "fn": lambda args, cwd: bash_tree(cwd, args.split()[0] if args.strip() else ".", int(args.split()[1]) if len(args.split()) > 1 else 3),
+        "read_only": True,
     },
     "git_diff": {
         "description": "Show git diff of current changes. Usage: git_diff",
         "fn": lambda args, cwd: bash_git_diff(cwd),
+        "read_only": True,
     },
     "wc": {
         "description": "Count lines in file. Usage: wc <filepath>",
         "fn": lambda args, cwd: bash_wc(args, cwd),
+        "read_only": True,
+    },
+    "sandbox_write_file": {
+        "description": "Write PoC code explicitly to a file. Usage: sandbox_write_file <filename>\\n<content>",
+        "fn": lambda args, cwd: __import__('tools.sandbox_tools', fromlist=['']).sandbox_write_file(args, cwd),
+        "read_only": False,  # WRITE OPERATION
+    },
+    "sandbox_execute": {
+        "description": "Run cargo or forge commands in sandbox. Usage: sandbox_execute cargo test --test <mytest>",
+        "fn": lambda args, cwd: __import__('tools.sandbox_tools', fromlist=['']).sandbox_execute(args, cwd),
+        "read_only": False,  # EXECUTE OPERATION
+    },
+    "fetch_skill": {
+        "description": "Fetch a specific Gravity domain skill to understand rules. Usage: fetch_skill <skill_name> (e.g. aptos_bft, rocksdb_sharding, grevm)",
+        "fn": lambda args, cwd: __import__('tools.bash_tools', fromlist=['']).bash_fetch_skill(args, cwd),
+        "read_only": True,
+    },
+    "ast_validate_call": {
+        "description": "Validates if a specific function calls another function within a file using AST. Usage json: {'file_path': '...', 'caller': '...', 'callee': '...'}",
+        "fn": lambda args, cwd: __import__('tools.tree_sitter_tools', fromlist=['']).ast_validate_call(args, cwd),
+        "read_only": True,
     },
 }
 
+def is_tool_read_only(tool_name: str) -> bool:
+    tool = TOOL_REGISTRY.get(tool_name)
+    if not tool:
+        return True # Default safe fallback
+    return tool.get("read_only", True)
+
+def bash_fetch_skill(skill_name: str, cwd: str) -> BashResult:
+    import os
+    name = skill_name.strip()
+    abs_skill = os.path.join(cwd, "skills", f"{name}.md")
+    if os.path.exists(abs_skill):
+        with open(abs_skill, "r", encoding="utf-8") as f:
+            return BashResult(f"fetch_skill {name}", f.read(), "", 0, 0)
+    skill_dir = os.path.join(cwd, "skills")
+    avail = ", ".join([f.replace(".md", "") for f in os.listdir(skill_dir) if f.endswith(".md")]) if os.path.exists(skill_dir) else "None"
+    return BashResult(f"fetch_skill {name}", "", f"[Error] Skill {name} not found. Available: {avail}", 1, 0)
+
+_mcp_tools_loaded = False
+
+def lazy_load_mcp(cwd: str):
+    global _mcp_tools_loaded
+    if _mcp_tools_loaded:
+        return
+    _mcp_tools_loaded = True
+    try:
+        from tools.mcp_bridge import init_all_mcp, call_mcp_tool
+        _mcp_tools = init_all_mcp(cwd)
+        for t_name, t_info in _mcp_tools.items():
+            TOOL_REGISTRY[t_name] = {
+                "description": f"MCP Tool (JSON strict args): {t_info['desc']}",
+                "fn": lambda args, cwd, name=t_name: BashResult(
+                    command=f"mcp {name}",
+                    stdout=call_mcp_tool(name, args),
+                    stderr="",
+                    returncode=0,
+                    duration_ms=0
+                ),
+                "read_only": True, # Assume MCP tools (rust-analyzer, semgrep) are read-only by default for safety
+            }
+    except Exception as e:
+        import sys
+        print(f"[Warning] Failed to load MCP tools: {e}", file=sys.stderr)
 
 def execute_tool(tool_name: str, args: str, cwd: str) -> BashResult:
+    lazy_load_mcp(cwd)
     """根据工具名执行对应的 bash 工具"""
     tool = TOOL_REGISTRY.get(tool_name)
     if not tool:
@@ -196,11 +265,19 @@ def execute_tool(tool_name: str, args: str, cwd: str) -> BashResult:
     return tool["fn"](args.strip(), cwd)
 
 
-def get_tools_description(tool_names: list[str]) -> str:
+def get_tools_description(tool_names: list[str], cwd: str = ".") -> str:
+    lazy_load_mcp(cwd)
     """生成可用工具的描述文本，供 LLM 理解"""
     lines = ["Available tools:"]
     for name in tool_names:
         tool = TOOL_REGISTRY.get(name)
         if tool:
             lines.append(f"  - {name}: {tool['description']}")
+            
+    # Inject dynamically loaded MCP tools
+    for name, tool in list(TOOL_REGISTRY.items()):
+        if "MCP Tool" in tool.get("description", "") and name not in tool_names:
+            lines.append(f"  - {name}: {tool['description']}")
+            tool_names.append(name)
+
     return "\n".join(lines)
