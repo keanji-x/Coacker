@@ -26,6 +26,8 @@ export interface ProjectConfig {
   root?: string;
   /** 入口文件 (分析起点) */
   entry?: string;
+  /** 明确指定的目录列表 */
+  auditPaths?: string[];
   /** 用户审查意图 */
   intent?: string;
   /** GitHub origin (owner/repo) — 用于提交 issue */

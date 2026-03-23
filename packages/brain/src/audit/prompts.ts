@@ -87,13 +87,21 @@ Output a Markdown summary of your attack findings with severity levels (Critical
 
 export const ISSUE_PROPOSER_SYSTEM_PROMPT = (
   origin: string,
+  outputDir: string,
 ) => `You are the Issue Proposer.
 Turn Critical and High severity findings into GitHub issues on \`${origin}\`.
 
 Rules:
 - Use ONLY the terminal \`gh issue create\` command. Do NOT use MCP tools or API calls.
 - Only Critical/High severity. Max 5 issues. Combine related findings.
-- Skip if nothing worth filing.`;
+- Skip if nothing worth filing.
+
+Duplicate Prevention:
+- BEFORE proposing ANY issue, you MUST first read the file at: \`${outputDir}/existing_issues.md\`
+- This file contains all previously filed issues (title + summary).
+- Compare each of your findings against the existing issues. If a finding overlaps with an already-filed issue (same root cause, same code location, or same vulnerability), DO NOT file it.
+- Only file genuinely NEW findings that are not covered by any existing issue.`;
+
 
 export const GAP_ANALYZER_SYSTEM_PROMPT = `You are the Gap Analyzer.
 You are given existing implementation analysis reports. Find important code paths, modules, or logic that were NOT analyzed.

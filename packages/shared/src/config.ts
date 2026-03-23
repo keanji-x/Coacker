@@ -52,6 +52,7 @@ export function getProjectConfig(
   return {
     root: ".",
     entry: "",
+    auditPaths: [],
     intent: "Comprehensive code review",
     origin: "",
     mainBranch: "main",

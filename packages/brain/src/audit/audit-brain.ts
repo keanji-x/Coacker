@@ -27,6 +27,7 @@ import {
   buildGapTask,
   buildConsolidationTask,
 } from "./task-builder.js";
+import { buildLocalTasks } from "./local-task-builder.js";
 import {
   getFirstResponse,
   extractReport,
@@ -54,7 +55,9 @@ export class AuditBrain {
   private readonly maxGapRounds: number;
   private readonly maxSubTasks: number;
   private readonly entryFile: string;
+  private readonly auditPaths: string[];
   private readonly userIntent: string;
+  private readonly projectRoot: string;
   private readonly outputDir: string;
   private readonly origin: string;
 
@@ -73,7 +76,9 @@ export class AuditBrain {
     this.maxGapRounds = options.audit.maxGapRounds;
     this.maxSubTasks = options.audit.maxSubTasks;
     this.entryFile = options.project.entry;
+    this.auditPaths = options.project.auditPaths || [];
     this.userIntent = options.project.intent;
+    this.projectRoot = options.project.root;
     this.outputDir = options.output.dir;
     this.origin = options.project.origin;
     this.log = new Logger("brain");
@@ -116,18 +121,25 @@ export class AuditBrain {
     this._phase = "intention";
     this.log.info("── Phase 1: Intention Analysis ──");
 
-    const intentionTask = buildIntentionTask(this.entryFile, this.userIntent);
-    const intentionResult = await player.executeTask(intentionTask);
-    this._history.push(intentionResult);
-    this.persist(intentionTask, intentionResult);
+    if (this.auditPaths.length > 0) {
+      // 本地生成 — 跳过 AI
+      this.subtasks = buildLocalTasks(this.projectRoot, this.auditPaths, this.userIntent);
+      this.log.info(`  📋 ${this.subtasks.length} local tasks generated from auditPaths`);
+    } else {
+      const intentionTask = buildIntentionTask(this.entryFile, this.userIntent);
+      const intentionResult = await player.executeTask(intentionTask);
+      this._history.push(intentionResult);
+      this.persist(intentionTask, intentionResult);
 
-    const intentionResponse = getFirstResponse(intentionResult);
-    this.subtasks = parseIntentionTasks(
-      intentionResponse,
-      this.userIntent,
-    ).slice(0, this.maxSubTasks);
+      const intentionResponse = getFirstResponse(intentionResult);
+      this.subtasks = parseIntentionTasks(
+        intentionResponse,
+        this.userIntent,
+      ).slice(0, this.maxSubTasks);
 
-    this.log.info(`  📋 ${this.subtasks.length} sub-tasks identified`);
+      this.log.info(`  📋 ${this.subtasks.length} AI-generated sub-tasks identified`);
+    }
+
     persistIntention(this.outputDir, this.subtasks);
     this.persistCurrentState();
 

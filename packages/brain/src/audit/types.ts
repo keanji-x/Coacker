@@ -75,6 +75,7 @@ export interface AuditBrainOptions {
   project: {
     root: string;
     entry: string;
+    auditPaths: string[];
     intent: string;
     origin: string;
   };

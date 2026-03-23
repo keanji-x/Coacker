@@ -36,6 +36,8 @@ export {
   buildGapTask,
   buildConsolidationTask,
 } from "./task-builder.js";
+export { buildLocalTasks } from "./local-task-builder.js";
+
 
 export {
   getFirstResponse,

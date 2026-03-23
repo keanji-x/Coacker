@@ -121,7 +121,7 @@ async function main() {
         implementer: IMPLEMENTATION_SYSTEM_PROMPT,
         reviewer: REVIEWER_SYSTEM_PROMPT,
         attacker: ATTACKER_SYSTEM_PROMPT,
-        issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || ""),
+        issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || "", outputCfg.dir),
         gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
         consolidator: CONSOLIDATION_SYSTEM_PROMPT,
       },
