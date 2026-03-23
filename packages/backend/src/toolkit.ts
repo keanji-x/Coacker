@@ -6,7 +6,7 @@
  */
 
 import { createRequire } from "node:module";
-import { McpClient } from "./mcp-client.js";
+import { McpBackend } from "./mcp-client.js";
 import { AstAnalyzer } from "./ast-analyzer.js";
 import type { LangId } from "./ast-analyzer.js";
 import { Sandbox } from "./sandbox.js";
@@ -15,7 +15,7 @@ import type { RepoMapConfig } from "./repo-map.js";
 
 /** 辅助工具集合 (所有字段可选) */
 export interface Toolkit {
-  mcp?: McpClient;
+  mcp?: McpBackend;
   ast?: AstAnalyzer;
   sandbox?: Sandbox;
   repoMap?: RepoMap;
@@ -66,7 +66,7 @@ export async function createToolkit(
   }
 
   if (config.mcp) {
-    toolkit.mcp = new McpClient();
+    toolkit.mcp = new McpBackend();
     await toolkit.mcp.connect(config.mcp.command, config.mcp.args, config.mcp.env);
   }
 

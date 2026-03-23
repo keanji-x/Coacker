@@ -9,7 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coacker/shared": "workspace:*",
-    "@coacker/player": "workspace:*"
+    "@coacker/backend": "workspace:*",
+    "@coacker/player": "workspace:*",
+    "@coacker/shared": "workspace:*"
   }
 }

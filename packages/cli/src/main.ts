@@ -6,8 +6,9 @@
  *   npx tsx packages/cli/src/main.ts [intent]
  */
 
-import { AgBackend, createToolkit } from "@coacker/backend";
-import type { Toolkit } from "@coacker/backend";
+import { AgBackend, ClaudeCodeBackend, createToolkit } from "@coacker/backend";
+import type { Backend, Toolkit } from "@coacker/backend";
+import { execSync } from "node:child_process";
 import { Brain } from "@coacker/brain";
 import {
   INTENTION_SYSTEM_PROMPT,
@@ -51,18 +52,17 @@ async function main() {
 
   logger.info("Coacker starting...");
   logger.info(`Brain type: ${brainCfg.type}`);
+  logger.info(`Backend type: ${backendCfg.type}`);
   logger.info(`Intent: ${intent}`);
   logger.info(`Entry: ${projectCfg.entry}`);
   logger.info(`Origin: ${projectCfg.origin || "(not set — issues disabled)"}`);
   logger.info(`Output: ${outputCfg.dir}`);
 
-  // 1. 创建 Backend
-  const backend = new AgBackend({
-    endpointUrl: backendCfg.ag?.endpointUrl,
-    timeout: backendCfg.ag?.timeout,
-    humanize: backendCfg.ag?.humanize,
-    windowTitle: backendCfg.ag?.windowTitle,
-  });
+  // 获取当前 git commit SHA (审计可溯源)
+  const commitSha = getCommitSha(projectCfg.root);
+
+  // 1. 创建 Backend (根据配置类型)
+  const backend = createBackendFromConfig(backendCfg, projectCfg.root);
 
   // 2. 创建 Toolkit (可选)
   let toolkit: Toolkit | undefined;
@@ -118,8 +118,10 @@ async function main() {
       toolkit,
     });
 
-    const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
-    logger.info(`Connected to: ${pageTitle}`);
+    const connInfo = await player.connect(
+      backendCfg.type === "ag" ? backendCfg.ag?.windowTitle : undefined,
+    );
+    logger.info(`Connected to: ${connInfo}`);
 
     try {
       const results = await brain.run(player);
@@ -152,7 +154,7 @@ async function main() {
         implementer: IMPLEMENTATION_SYSTEM_PROMPT,
         reviewer: REVIEWER_SYSTEM_PROMPT,
         attacker: ATTACKER_SYSTEM_PROMPT,
-        issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || ""),
+        issue_proposer: ISSUE_PROPOSER_SYSTEM_PROMPT(projectCfg.origin || "", commitSha),
         gap_analyzer: GAP_ANALYZER_SYSTEM_PROMPT,
         consolidator: CONSOLIDATION_SYSTEM_PROMPT,
       },
@@ -171,8 +173,10 @@ async function main() {
       toolkit,
     });
 
-    const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
-    logger.info(`Connected to: ${pageTitle}`);
+    const connInfo = await player.connect(
+      backendCfg.type === "ag" ? backendCfg.ag?.windowTitle : undefined,
+    );
+    logger.info(`Connected to: ${connInfo}`);
 
     try {
       const report = await brain.run(player);
@@ -185,6 +189,53 @@ async function main() {
     } finally {
       await player.disconnect();
     }
+  }
+}
+
+// ── Backend 工厂 ──
+
+function createBackendFromConfig(
+  backendCfg: ReturnType<typeof getBackendConfig>,
+  projectRoot: string,
+): Backend {
+  switch (backendCfg.type) {
+    case "claude-code": {
+      const cc = backendCfg.claudeCode;
+      return new ClaudeCodeBackend({
+        model: cc.model || undefined,
+        tools: cc.tools,
+        permissionMode: cc.permissionMode,
+        claudeBinary: cc.claudeBinary,
+        cwd: cc.cwd || projectRoot,
+      });
+    }
+    case "ag":
+    default:
+      return new AgBackend({
+        endpointUrl: backendCfg.ag?.endpointUrl,
+        timeout: backendCfg.ag?.timeout,
+        humanize: backendCfg.ag?.humanize,
+        windowTitle: backendCfg.ag?.windowTitle,
+      });
+  }
+}
+
+// ── Git Helpers ──
+
+/**
+ * 获取当前 git commit SHA (short, 8 chars)
+ * 失败时返回 undefined (non-git 仓库或没有任何 commit)
+ */
+function getCommitSha(cwd: string): string | undefined {
+  try {
+    return execSync("git rev-parse --short=8 HEAD", {
+      cwd,
+      encoding: "utf-8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return undefined;
   }
 }
 

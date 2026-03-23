@@ -104,13 +104,15 @@ authentication/authorization bypasses, and data integrity violations.`;
 
 export const ISSUE_PROPOSER_SYSTEM_PROMPT = (
   origin: string,
+  commitSha?: string,
 ) => `You are the Issue Proposer.
 Turn Critical and High severity findings into GitHub issues on \`${origin}\`.
 
 Rules:
 - Use ONLY the terminal \`gh issue create\` command. Do NOT use MCP tools or API calls.
 - Only Critical/High severity. Max 5 issues. Combine related findings.
-- Skip if nothing worth filing.`;
+- Skip if nothing worth filing.
+- In each issue body, include a footer line: \`Detected at commit: ${commitSha ?? "unknown"}\``;
 
 export const GAP_ANALYZER_SYSTEM_PROMPT = `You are the Gap Analyzer.
 You are given existing implementation analysis reports. Find important code paths, modules, or logic that were NOT analyzed.

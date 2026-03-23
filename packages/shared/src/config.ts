@@ -73,10 +73,11 @@ export function getOutputConfig(
 /** 获取 Backend 配置 */
 export function getBackendConfig(
   config?: CoackerConfig,
-): Required<Pick<BackendConfig, "type" | "ag">> & Pick<BackendConfig, "toolkit"> {
+): Required<Pick<BackendConfig, "type" | "ag">> &
+  Pick<BackendConfig, "toolkit"> & { claudeCode: Required<NonNullable<BackendConfig["claudeCode"]>> } {
   const cfg = config ?? loadConfig();
   return {
-    type: "ag",
+    type: cfg.backend?.type ?? "ag",
     ...cfg.backend,
     ag: {
       endpointUrl: "http://localhost:9222",
@@ -84,6 +85,14 @@ export function getBackendConfig(
       humanize: true,
       windowTitle: "",
       ...cfg.backend?.ag,
+    },
+    claudeCode: {
+      model: "",
+      tools: "default",
+      permissionMode: "acceptEdits",
+      claudeBinary: "claude",
+      cwd: "",
+      ...cfg.backend?.claudeCode,
     },
   };
 }

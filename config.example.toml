@@ -23,6 +23,17 @@ timeout = 30000                           # Connection timeout (ms)
 humanize = true                           # Simulate human typing rhythm
 windowTitle = "Coacker"                   # Window title to connect to
 
+# ─── Claude Code Backend (替代 AG) ───
+# 取消注释以使用 Claude Code CLI 作为 backend
+# [backend]
+# type = "claude-code"
+# [backend.claudeCode]
+# model = ""                                # 模型 (sonnet/opus, 空 = CLI 默认)
+# tools = "default"                         # 工具 ("default" = 全部, "" = 禁用)
+# permissionMode = "acceptEdits"            # 权限模式
+# claudeBinary = "claude"                   # claude CLI 路径
+# cwd = ""                                  # 工作目录 (空 = project.root)
+
 # ─── Toolkit (可选辅助工具，Brain 用来预处理上下文) ───
 
 # --- AST 分析器: 二选一 ---

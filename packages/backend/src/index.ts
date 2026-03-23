@@ -4,6 +4,7 @@
  * 导出:
  *   - Backend 接口 (Player 只依赖这个)
  *   - AgBackend 实现 (通过工厂函数或直接实例化)
+ *   - ClaudeCodeBackend 实现 (通过 claude CLI)
  *   - Toolkit 辅助工具 (Brain 可选使用)
  */
 
@@ -19,12 +20,16 @@ export type {
 export { AgBackend } from "./ag-backend.js";
 export type { AgBackendOptions } from "./ag-backend.js";
 
+// ── Claude Code 实现 ──
+export { ClaudeCodeBackend } from "./claude-code-backend.js";
+export type { ClaudeCodeBackendOptions } from "./claude-code-backend.js";
+
 // ── Mock 实现 (测试用) ──
 export { MockBackend } from "./mock-backend.js";
 export type { MockResponse } from "./mock-backend.js";
 
 // ── Toolkit (辅助工具) ──
-export { McpClient } from "./mcp-client.js";
+export { McpBackend } from "./mcp-client.js";
 export { AstAnalyzer } from "./ast-analyzer.js";
 export type { SymbolDef, SymbolRef, LangId } from "./ast-analyzer.js";
 export { Sandbox } from "./sandbox.js";
@@ -38,14 +43,17 @@ export type { Toolkit, ToolkitConfig, AstConfig } from "./toolkit.js";
 import type { Backend, BackendOptions } from "./interface.js";
 import { AgBackend } from "./ag-backend.js";
 import type { AgBackendOptions } from "./ag-backend.js";
+import { ClaudeCodeBackend } from "./claude-code-backend.js";
+import type { ClaudeCodeBackendOptions } from "./claude-code-backend.js";
 
-export type BackendType = "ag";
+export type BackendType = "ag" | "claude-code";
 
 /**
  * 工厂函数: 根据类型创建 Backend 实例
  *
  * @example
  * const backend = createBackend('ag', { endpointUrl: 'http://localhost:9222' });
+ * const backend = createBackend('claude-code', { model: 'sonnet' });
  */
 export function createBackend(
   type: BackendType,
@@ -54,6 +62,8 @@ export function createBackend(
   switch (type) {
     case "ag":
       return new AgBackend(options as AgBackendOptions);
+    case "claude-code":
+      return new ClaudeCodeBackend(options as ClaudeCodeBackendOptions);
     default:
       throw new Error(`Unknown backend type: ${type}`);
   }

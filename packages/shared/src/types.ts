@@ -46,6 +46,8 @@ export interface BackendConfig {
   type?: string;
   /** AG (CDP) 配置 */
   ag?: AgConfig;
+  /** Claude Code CLI 配置 */
+  claudeCode?: ClaudeCodeConfig;
   /** Toolkit 辅助工具配置 (可选) */
   toolkit?: ToolkitConfig;
 }
@@ -74,6 +76,20 @@ export interface AgConfig {
   humanize?: boolean;
   /** CDP 窗口标题匹配关键字 */
   windowTitle?: string;
+}
+
+/** Claude Code CLI 配置 */
+export interface ClaudeCodeConfig {
+  /** 模型 (e.g. "sonnet", "opus"). 默认: CLI 默认 */
+  model?: string;
+  /** 允许的工具列表. 默认: "default" (全部开启) */
+  tools?: string;
+  /** 权限模式. 默认: "acceptEdits" */
+  permissionMode?: string;
+  /** claude 二进制路径. 默认: "claude" */
+  claudeBinary?: string;
+  /** 工作目录. 默认: project.root */
+  cwd?: string;
 }
 
 /** Brain 配置 */

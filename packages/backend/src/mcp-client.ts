@@ -14,9 +14,7 @@ export class McpBackend {
       name: "coacker-mcp-client",
       version: "3.0.0"
     }, {
-      capabilities: {
-        tools: {}
-      }
+      capabilities: {}
     });
   }
 
@@ -27,7 +25,10 @@ export class McpBackend {
     this.transport = new StdioClientTransport({
       command,
       args,
-      env: { ...process.env, ...env }
+      env: Object.fromEntries(
+        Object.entries({ ...process.env, ...env })
+          .filter((e): e is [string, string] => e[1] !== undefined)
+      ),
     });
     
     await this.client.connect(this.transport);
