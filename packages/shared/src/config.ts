@@ -73,7 +73,7 @@ export function getOutputConfig(
 /** 获取 Backend 配置 */
 export function getBackendConfig(
   config?: CoackerConfig,
-): Required<BackendConfig> {
+): Required<Pick<BackendConfig, "type" | "ag">> & Pick<BackendConfig, "toolkit"> {
   const cfg = config ?? loadConfig();
   return {
     type: "ag",
@@ -88,8 +88,25 @@ export function getBackendConfig(
   };
 }
 
+/** Brain 配置（带默认值）的返回类型 */
+export interface ResolvedBrainConfig {
+  type: string;
+  audit: {
+    maxGapRounds: number;
+    maxSubTasks: number;
+    spinBreaker?: { maxConsecutiveSpins?: number };
+    knowledgeDir?: string;
+  };
+  validate: {
+    maxReviewAttempts: number;
+    excludeLabels: string[];
+    draftOnFailure: boolean;
+    sast?: { command?: string; args?: string[] };
+  };
+}
+
 /** 获取 Brain 配置 */
-export function getBrainConfig(config?: CoackerConfig): Required<BrainConfig> {
+export function getBrainConfig(config?: CoackerConfig): ResolvedBrainConfig {
   const cfg = config ?? loadConfig();
   return {
     type: "audit",

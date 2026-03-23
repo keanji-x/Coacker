@@ -86,9 +86,13 @@ export interface ValidateBrainOptions {
     maxReviewAttempts: number;
     excludeLabels: string[];
     draftOnFailure: boolean;
+    /** SAST 门禁配置 (PR 前静态安全扫描) */
+    sast?: { command?: string; args?: string[] };
   };
   /** 输出配置 */
   output: {
     dir: string;
   };
+  /** 辅助工具 (可选) — 用于在派发 Task 前预处理上下文 */
+  toolkit?: import("@coacker/backend").Toolkit;
 }

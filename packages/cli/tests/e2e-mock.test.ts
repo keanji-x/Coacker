@@ -26,37 +26,43 @@ async function main() {
   const backend = new MockBackend([
     // 1. Intention
     {
-      snapshot: `I analyzed the project.\n\n[\n  {"id": "config_review", "intention": "Review configuration loading and validation"}\n]`,
+      snapshot: `[debug snapshot]`,
+      response: `[\n  {"id": "config_review", "intention": "Review configuration loading and validation"}\n]`,
       state: 'done',
       delay: 50,
     },
     // 2. SubTask impl
     {
-      snapshot: `## Implementation Analysis\n\nThe config module loads TOML files using smol-toml parser. It uses singleton caching.\n\n### Key Functions\n- \`loadConfig()\`: reads config.toml, caches result\n- \`getBackendConfig()\`: merges defaults with user config`,
+      snapshot: `[debug snapshot]`,
+      response: `## Implementation Analysis\n\nThe config module loads TOML files using smol-toml parser. It uses singleton caching.\n\n### Key Functions\n- \`loadConfig()\`: reads config.toml, caches result\n- \`getBackendConfig()\`: merges defaults with user config`,
       state: 'done',
       delay: 50,
     },
     // 3. SubTask review
     {
-      snapshot: `## Code Review\n\n**Warning**: Config spread order may cause nested defaults to be overwritten.\n**Info**: No input validation on TOML values.`,
+      snapshot: `[debug snapshot]`,
+      response: `## Code Review\n\n**Warning**: Config spread order may cause nested defaults to be overwritten.\n**Info**: No input validation on TOML values.`,
       state: 'done',
       delay: 50,
     },
     // 4. SubTask attack
     {
-      snapshot: `## Attack Findings\n\n**Medium**: Singleton cache never invalidated - stale config after file changes.`,
+      snapshot: `[debug snapshot]`,
+      response: `## Attack Findings\n\n**Medium**: Singleton cache never invalidated - stale config after file changes.`,
       state: 'done',
       delay: 50,
     },
     // 5. Gap analysis
     {
-      snapshot: `{"completeness_score": 9, "gaps": [], "duplicates": []}`,
+      snapshot: `[debug snapshot]`,
+      response: `{"completeness_score": 9, "gaps": [], "duplicates": []}`,
       state: 'done',
       delay: 50,
     },
     // 6. Consolidation
     {
-      snapshot: `## Executive Summary\n\nThe codebase shows reasonable structure with a few configuration handling concerns.\n\n## Top Issues\n1. **Medium** - Config override bug in spread order\n2. **Low** - No TOML validation`,
+      snapshot: `[debug snapshot]`,
+      response: `## Executive Summary\n\nThe codebase shows reasonable structure with a few configuration handling concerns.\n\n## Top Issues\n1. **Medium** - Config override bug in spread order\n2. **Low** - No TOML validation`,
       state: 'done',
       delay: 50,
     },
@@ -125,6 +131,10 @@ async function main() {
   ok(backend.conversationCount === 4, `Conversations: ${backend.conversationCount} (expected 4)`);
   ok(backend.chatHistory.length === 6, `Chats: ${backend.chatHistory.length} (expected 6)`);
   ok(brain.history.length === 4, `History: ${brain.history.length} (expected 4)`);
+
+  // File-based response verification
+  ok(report.tasks[0]?.implementation.includes('Implementation Analysis'), 'Implementation comes from response (not snapshot)');
+  ok(!report.tasks[0]?.implementation.includes('[debug snapshot]'), 'Implementation does NOT contain debug snapshot');
 
   // 持久化验证
   ok(existsSync(join(OUTPUT_DIR, 'state.json')), 'state.json exists');

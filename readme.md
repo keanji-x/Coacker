@@ -135,7 +135,7 @@ mainBranch = "main"               # Main branch name (default "main")
 dir = "./output"
 
 [backend]
-type = "ag"
+type = "ag"                       # "ag", "mcp", "ast", or "sandbox"
 
 [backend.ag]
 endpointUrl = "http://localhost:9222"

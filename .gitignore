@@ -24,3 +24,8 @@ config.toml
 # Output
 output/
 external/
+docs/
+
+# Python
+__pycache__/
+*.pyc

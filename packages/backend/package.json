@@ -11,5 +11,10 @@
   "dependencies": {
     "@coacker/shared": "workspace:*",
     "playwright": "^1.52.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.26.7"
   }
 }

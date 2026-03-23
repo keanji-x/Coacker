@@ -6,7 +6,8 @@
  *   npx tsx packages/cli/src/main.ts [intent]
  */
 
-import { AgBackend } from "@coacker/backend";
+import { AgBackend, createToolkit } from "@coacker/backend";
+import type { Toolkit } from "@coacker/backend";
 import { Brain } from "@coacker/brain";
 import {
   INTENTION_SYSTEM_PROMPT,
@@ -63,7 +64,35 @@ async function main() {
     windowTitle: backendCfg.ag?.windowTitle,
   });
 
-  // 2. 根据 brain type 分发
+  // 2. 创建 Toolkit (可选)
+  let toolkit: Toolkit | undefined;
+  if (backendCfg.toolkit) {
+    const tkCfg = backendCfg.toolkit;
+    const toolkitConfig: Record<string, unknown> = {};
+
+    // AST: 支持单语言 (languagePath) 和多语言 (languages) 两种配置
+    if (tkCfg.ast) {
+      if ("languages" in tkCfg.ast && tkCfg.ast.languages) {
+        toolkitConfig.ast = { languages: tkCfg.ast.languages };
+      } else if ("languagePath" in tkCfg.ast && tkCfg.ast.languagePath) {
+        toolkitConfig.ast = { languagePath: tkCfg.ast.languagePath };
+      }
+    }
+
+    if (tkCfg.mcp?.command) toolkitConfig.mcp = { command: tkCfg.mcp.command, args: tkCfg.mcp.args ?? [] };
+    if (tkCfg.sandbox) toolkitConfig.sandbox = { baseDir: tkCfg.sandbox.baseDir, allowedCommands: tkCfg.sandbox.allowedCommands };
+    if (tkCfg.repoMap) toolkitConfig.repoMap = tkCfg.repoMap;
+
+    if (Object.keys(toolkitConfig).length > 0) {
+      toolkit = await createToolkit(
+        toolkitConfig as Parameters<typeof createToolkit>[0],
+        projectCfg.root,
+      );
+      logger.info(`Toolkit: ${Object.keys(toolkitConfig).join(", ")}`);
+    }
+  }
+
+  // 3. 根据 brain type 分发
   if (brainCfg.type === "validate") {
     // ── Validate Brain ──
     const player = new Player({
@@ -76,15 +105,17 @@ async function main() {
       },
     });
 
-    const validate = brainCfg.validate!;
+    const validate = brainCfg.validate;
     const brain = new ValidateBrain({
       project: { root: projectCfg.root, origin: projectCfg.origin },
       validate: {
-        maxReviewAttempts: validate.maxReviewAttempts!,
-        excludeLabels: validate.excludeLabels!,
-        draftOnFailure: validate.draftOnFailure!,
+        maxReviewAttempts: validate.maxReviewAttempts,
+        excludeLabels: validate.excludeLabels,
+        draftOnFailure: validate.draftOnFailure,
+        sast: validate.sast,
       },
       output: outputCfg,
+      toolkit,
     });
 
     const pageTitle = await player.connect(backendCfg.ag?.windowTitle);
@@ -127,14 +158,17 @@ async function main() {
       },
     });
 
-    const audit = brainCfg.audit!;
+    const audit = brainCfg.audit;
     const brain = new Brain({
       project: { ...projectCfg, intent },
       audit: {
-        maxGapRounds: audit.maxGapRounds!,
-        maxSubTasks: audit.maxSubTasks!,
+        maxGapRounds: audit.maxGapRounds,
+        maxSubTasks: audit.maxSubTasks,
+        spinBreaker: audit.spinBreaker,
+        knowledgeDir: audit.knowledgeDir,
       },
       output: outputCfg,
+      toolkit,
     });
 
     const pageTitle = await player.connect(backendCfg.ag?.windowTitle);

@@ -15,6 +15,7 @@ import type { SubTask, TaskReport } from "./types.js";
 export function buildIntentionTask(
   entryFile: string,
   userIntent: string,
+  enrichment?: string,
 ): Task {
   return {
     id: "intention",
@@ -28,9 +29,12 @@ export function buildIntentionTask(
           `## Task: Intention Analysis`,
           `**Entry File:** ${entryFile}`,
           `**User Intent:** ${userIntent}`,
+          enrichment || "",
           "",
           `Explore the project starting from the entry file and break the review into sub-tasks.`,
-        ].join("\n"),
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
     ],
   };
@@ -43,6 +47,7 @@ export function buildSubTask(
   userIntent: string,
   origin: string,
   reports: ReadonlyMap<string, TaskReport>,
+  enrichment?: string,
 ): Task {
   const contextSnippet = buildContextSnippet(reports);
 
@@ -56,6 +61,7 @@ export function buildSubTask(
         `**Entry File:** ${entryFile}`,
         `**User Intent:** ${userIntent}`,
         contextSnippet ? `\n## Prior Knowledge\n${contextSnippet}` : "",
+        enrichment || "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -95,6 +101,7 @@ export function buildGapTask(
   entryFile: string,
   userIntent: string,
   reports: ReadonlyMap<string, TaskReport>,
+  enrichment?: string,
 ): Task {
   const summaries = Array.from(reports.values())
     .map((r) =>
@@ -118,11 +125,14 @@ export function buildGapTask(
         message: [
           `Entry File: ${entryFile}`,
           `User Intent: ${userIntent}`,
+          enrichment || "",
           "",
           "## Existing Implementation Reports",
           "",
           summaries,
-        ].join("\n"),
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
     ],
   };

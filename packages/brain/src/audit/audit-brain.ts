@@ -11,6 +11,7 @@
  */
 
 import type { Player } from "@coacker/player";
+import type { Toolkit } from "@coacker/backend";
 import type { TaskResult } from "@coacker/shared";
 import { Logger } from "@coacker/shared";
 
@@ -45,6 +46,12 @@ import {
   loadReports,
 } from "./persister.js";
 import { buildReport } from "./report-builder.js";
+import {
+  enrichIntention as doEnrichIntention,
+  enrichSubTask as doEnrichSubTask,
+  enrichGapAnalysis as doEnrichGapAnalysis,
+  type EnrichmentContext,
+} from "./enrich.js";
 
 // Re-export as Brain for backward compatibility
 export { type AuditBrainOptions as BrainOptions };
@@ -57,12 +64,19 @@ export class AuditBrain {
   private readonly userIntent: string;
   private readonly outputDir: string;
   private readonly origin: string;
+  private readonly projectRoot: string;
+  private readonly knowledgeDir?: string;
+  private readonly maxConsecutiveSpins: number;
+
+  // ── 辅助工具 ──
+  private readonly toolkit?: Toolkit;
 
   // ── 状态机 ──
   private _phase: AuditPhase = "idle";
   private subtasks: SubTask[] = [];
   private reports: Map<string, TaskReport> = new Map();
   private gapRound = 0;
+  private consecutiveSpins = 0;
 
   // ── 历史 ──
   private _history: TaskResult[] = [];
@@ -76,6 +90,10 @@ export class AuditBrain {
     this.userIntent = options.project.intent;
     this.outputDir = options.output.dir;
     this.origin = options.project.origin;
+    this.projectRoot = options.project.root;
+    this.knowledgeDir = options.audit.knowledgeDir;
+    this.maxConsecutiveSpins = options.audit.spinBreaker?.maxConsecutiveSpins ?? 2;
+    this.toolkit = options.toolkit;
     this.log = new Logger("brain");
 
     ensureOutputDirs(this.outputDir);
@@ -116,7 +134,12 @@ export class AuditBrain {
     this._phase = "intention";
     this.log.info("── Phase 1: Intention Analysis ──");
 
-    const intentionTask = buildIntentionTask(this.entryFile, this.userIntent);
+    const intentionEnrichment = await this.enrichIntention();
+    const intentionTask = buildIntentionTask(
+      this.entryFile,
+      this.userIntent,
+      intentionEnrichment,
+    );
     const intentionResult = await player.executeTask(intentionTask);
     this._history.push(intentionResult);
     this.persist(intentionTask, intentionResult);
@@ -144,6 +167,12 @@ export class AuditBrain {
     );
 
     for (const st of this.subtasks) {
+      if (this.consecutiveSpins >= this.maxConsecutiveSpins) {
+        this.log.warn(
+          `  ⚠ Spin Breaker: ${this.consecutiveSpins} consecutive low-value tasks — skipping remaining subtasks`,
+        );
+        break;
+      }
       await this.executeSubTask(st, player);
     }
 
@@ -162,12 +191,14 @@ export class AuditBrain {
     st.status = "in_progress";
     persistIntention(this.outputDir, this.subtasks);
 
+    const enrichment = await this.enrichSubTask(st);
     const task = buildSubTask(
       st,
       this.entryFile,
       this.userIntent,
       this.origin,
       this.reports,
+      enrichment,
     );
 
     st.completedSteps = [];
@@ -209,6 +240,16 @@ export class AuditBrain {
 
     const report = extractReport(st, result);
     this.reports.set(st.id, report);
+
+    // Spin Breaker: 检测低价值 findings
+    if (this.isSpinning(report)) {
+      this.consecutiveSpins++;
+      this.log.warn(
+        `  ⚠ Spin detected on [${st.id}] (${this.consecutiveSpins}/${this.maxConsecutiveSpins})`,
+      );
+    } else {
+      this.consecutiveSpins = 0;
+    }
 
     // 标记 done, 清除运行时字段
     st.status = "done";
@@ -396,11 +437,13 @@ export class AuditBrain {
         `── Phase 2.5: Gap Analysis (round ${this.gapRound + 1}, budget: ${remainingBudget}) ──`,
       );
 
+      const gapEnrichment = await this.enrichGapAnalysis();
       const gapTask = buildGapTask(
         this.gapRound,
         this.entryFile,
         this.userIntent,
         this.reports,
+        gapEnrichment,
       );
       const gapResult = await player.executeTask(gapTask);
       this._history.push(gapResult);
@@ -477,5 +520,48 @@ export class AuditBrain {
       this.reports,
       this._history,
     );
+  }
+
+  // ─── Toolkit Enrichment ─────────────────────────
+
+  /** Enrichment 上下文 (lazy getter) */
+  private get enrichCtx(): EnrichmentContext {
+    return {
+      toolkit: this.toolkit,
+      projectRoot: this.projectRoot,
+      entryFile: this.entryFile,
+      knowledgeDir: this.knowledgeDir,
+    };
+  }
+
+  private async enrichIntention(): Promise<string> {
+    return doEnrichIntention(this.enrichCtx);
+  }
+
+  private async enrichSubTask(st: SubTask): Promise<string> {
+    return doEnrichSubTask(this.enrichCtx, st);
+  }
+
+  private async enrichGapAnalysis(): Promise<string> {
+    return doEnrichGapAnalysis(this.enrichCtx, this.reports);
+  }
+
+  // ─── Spin Breaker ─────────────────────────────────
+
+  /**
+   * 检测 report 是否全部落在 System Bans 范围 (低价值 findings)
+   */
+  private isSpinning(report: TaskReport): boolean {
+    const banKeywords = [
+      "naming", "formatting", "unused import", "dead code",
+      "indentation", "style", "documentation", "comment",
+      "naming convention", "code style", "whitespace",
+    ];
+    const combined = (report.codeReview + " " + report.attackReview).toLowerCase();
+    const sentences = combined.split(/[.。\n]/).filter((s) => s.trim().length > 10);
+    if (sentences.length === 0) return false;
+
+    const banHitCount = banKeywords.filter((k) => combined.includes(k)).length;
+    return banHitCount / sentences.length > 0.6;
   }
 }

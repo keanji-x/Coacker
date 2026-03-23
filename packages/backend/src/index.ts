@@ -4,9 +4,10 @@
  * 导出:
  *   - Backend 接口 (Player 只依赖这个)
  *   - AgBackend 实现 (通过工厂函数或直接实例化)
+ *   - Toolkit 辅助工具 (Brain 可选使用)
  */
 
-// 接口
+// ── Backend 接口 ──
 export type {
   Backend,
   BackendOptions,
@@ -14,15 +15,26 @@ export type {
   ChatOptions,
 } from "./interface.js";
 
-// AG 实现
+// ── AG 实现 ──
 export { AgBackend } from "./ag-backend.js";
 export type { AgBackendOptions } from "./ag-backend.js";
 
-// Mock 实现 (测试用)
+// ── Mock 实现 (测试用) ──
 export { MockBackend } from "./mock-backend.js";
 export type { MockResponse } from "./mock-backend.js";
 
-// 工厂
+// ── Toolkit (辅助工具) ──
+export { McpClient } from "./mcp-client.js";
+export { AstAnalyzer } from "./ast-analyzer.js";
+export type { SymbolDef, SymbolRef, LangId } from "./ast-analyzer.js";
+export { Sandbox } from "./sandbox.js";
+export type { SandboxResult } from "./sandbox.js";
+export { RepoMap } from "./repo-map.js";
+export type { RepoMapConfig, RepoMapData } from "./repo-map.js";
+export { createToolkit } from "./toolkit.js";
+export type { Toolkit, ToolkitConfig, AstConfig } from "./toolkit.js";
+
+// ── 工厂 ──
 import type { Backend, BackendOptions } from "./interface.js";
 import { AgBackend } from "./ag-backend.js";
 import type { AgBackendOptions } from "./ag-backend.js";

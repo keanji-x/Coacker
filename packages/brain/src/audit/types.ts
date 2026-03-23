@@ -82,11 +82,17 @@ export interface AuditBrainOptions {
   audit: {
     maxGapRounds: number;
     maxSubTasks: number;
+    /** 空转断路器: 连续 N 次低价值 findings 后停止 */
+    spinBreaker?: { maxConsecutiveSpins?: number };
+    /** 知识目录 (默认 .coacker/docs/) */
+    knowledgeDir?: string;
   };
   /** 输出配置 (来自 config.toml [output]) */
   output: {
     dir: string;
   };
+  /** 辅助工具 (可选) — 用于在派发 Task 前预处理上下文 */
+  toolkit?: import("@coacker/backend").Toolkit;
 }
 
 /** AuditBrain 可序列化状态快照 */

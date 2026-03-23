@@ -14,7 +14,7 @@ import type { UnderstandingResult, ReviewVerdict } from "./types.js";
  */
 export function getStepSnapshot(result: TaskResult, stepId: string): string {
   const step = result.stepResults.find((s) => s.stepId === stepId);
-  return step?.snapshot ?? "";
+  return step?.response ?? step?.snapshot ?? "";
 }
 
 /**
@@ -69,11 +69,30 @@ export function parseTestGenResult(response: string): {
     };
   }
 
-  // 正常情况: 整个 snapshot 就是测试相关的上下文
+  // 正常情况: 尝试分离 test code 和 execution output
+  // 常见分隔标记: "// Test output:", "Test output:", "Execution output:", "Output:"
+  const splitPatterns = [
+    /\n(?:\/\/\s*)?Test [Oo]utput:\s*/,
+    /\n(?:##?\s*)?(?:Test )?[Ee]xecution [Oo]utput:?\s*/,
+    /\n(?:##?\s*)?Output:\s*/,
+  ];
+
+  for (const pattern of splitPatterns) {
+    const match = response.search(pattern);
+    if (match > 0) {
+      return {
+        untestable: false,
+        testCode: response.slice(0, match).trim(),
+        testOutput: response.slice(match).trim(),
+      };
+    }
+  }
+
+  // 无法分离时: testCode = 全文, testOutput 留空避免在 reviewer prompt 里重复
   return {
     untestable: false,
     testCode: response,
-    testOutput: response,
+    testOutput: "",
   };
 }
 

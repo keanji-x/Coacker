@@ -12,6 +12,7 @@
  */
 
 import type { Player } from "@coacker/player";
+import type { Toolkit } from "@coacker/backend";
 import type { TaskResult } from "@coacker/shared";
 import { Logger } from "@coacker/shared";
 
@@ -24,7 +25,8 @@ import type {
   ReviewVerdict,
 } from "./types.js";
 import {
-  buildUnderstandAndGenTask,
+  buildUnderstandTask,
+  buildTestGenTask,
   buildReviewTask,
   buildRetryGenTask,
   buildPrCreateTask,
@@ -44,6 +46,7 @@ import {
   loadState,
   loadResults,
 } from "./persister.js";
+import { enrichIssueContext, runSASTGate } from "./enrich.js";
 
 export class ValidateBrain {
   // ── 配置 ──
@@ -52,6 +55,11 @@ export class ValidateBrain {
   private readonly draftOnFailure: boolean;
   private readonly origin: string;
   private readonly outputDir: string;
+  private readonly projectRoot: string;
+  private readonly sastConfig?: { command?: string; args?: string[] };
+
+  // ── 辅助工具 ──
+  private readonly _toolkit?: Toolkit;
 
   // ── 状态机 ──
   private _phase: ValidatePhase = "idle";
@@ -71,6 +79,9 @@ export class ValidateBrain {
     this.draftOnFailure = options.validate.draftOnFailure;
     this.origin = options.project.origin;
     this.outputDir = options.output.dir;
+    this.projectRoot = options.project.root;
+    this.sastConfig = options.validate.sast;
+    this._toolkit = options.toolkit;
     this.log = new Logger("brain:validate");
 
     ensureOutputDirs(this.outputDir);
@@ -161,18 +172,28 @@ export class ValidateBrain {
   ): Promise<void> {
     this.log.info(`\n── Validating Issue #${issue.number}: ${issue.title} ──`);
 
-    // Phase 1: Understanding + Test Generation (同一对话)
+    // Phase 1a: Understanding (单独执行, 可短路)
     this._phase = "understanding";
     this.reviewAttempt = 0;
     this.persistCurrentState();
 
-    const genTask = buildUnderstandAndGenTask(issue);
-    const genResult = await player.executeTask(genTask);
-    this._history.push(genResult);
-    persistConversation(this.outputDir, genTask, genResult);
+    // Enrichment: 注入 issue 相关代码上下文
+    const issueEnrichment = await enrichIssueContext(
+      this._toolkit,
+      issue,
+      this.projectRoot,
+    );
+
+    const understandTask = buildUnderstandTask(issue, issueEnrichment);
+    const understandResult = await player.executeTask(understandTask);
+    this._history.push(understandResult);
+    persistConversation(this.outputDir, understandTask, understandResult);
 
     // 检查 understanding 是否标记 untestable
-    const understandingSnapshot = getStepSnapshot(genResult, "understand");
+    const understandingSnapshot = getStepSnapshot(
+      understandResult,
+      "understand",
+    );
     const understanding = parseUnderstanding(understandingSnapshot);
 
     if (!understanding.testable) {
@@ -192,11 +213,16 @@ export class ValidateBrain {
       return;
     }
 
-    // 检查 test_gen 是否标记 untestable
+    // Phase 1b: Test Generation (续同一对话)
     this._phase = "test_generation";
     this.persistCurrentState();
 
-    const testGenSnapshot = getStepSnapshot(genResult, "test_gen");
+    const testGenTask = buildTestGenTask(issue, understandingSnapshot);
+    const testGenResult = await player.executeTask(testGenTask);
+    this._history.push(testGenResult);
+    persistConversation(this.outputDir, testGenTask, testGenResult);
+
+    const testGenSnapshot = getStepSnapshot(testGenResult, "test_gen");
     const testGenParsed = parseTestGenResult(testGenSnapshot);
 
     if (testGenParsed.untestable) {
@@ -245,11 +271,25 @@ export class ValidateBrain {
       if (lastVerdict.verdict === "ACCEPT") {
         this.log.info(`  ✅ Issue #${issue.number} ACCEPTED`);
 
-        // PR Create
+        // SAST 门禁: PR 创建前执行静态安全扫描
+        const sastResult = await runSASTGate(
+          this._toolkit,
+          [], // changedFiles — not tracked at this level
+          this.projectRoot,
+          this.sastConfig,
+        );
+        if (!sastResult.passed) {
+          this.log.warn(
+            `  ⚠ SAST gate failed for issue #${issue.number} — creating draft PR`,
+          );
+        }
+
+        // PR Create (draft if SAST failed)
         this._phase = "pr_create";
         this.persistCurrentState();
 
-        const prTask = buildPrCreateTask(issue, this.origin);
+        const isDraft = !sastResult.passed;
+        const prTask = buildPrCreateTask(issue, this.origin, isDraft, sastResult.report);
         const prResult = await player.executeTask(prTask);
         this._history.push(prResult);
         persistConversation(this.outputDir, prTask, prResult);
@@ -257,7 +297,7 @@ export class ValidateBrain {
         const result: ValidationResult = {
           issueNumber: issue.number,
           issueTitle: issue.title,
-          outcome: "accepted",
+          outcome: isDraft ? "draft" : "accepted",
           reviewAttempts: this.reviewAttempt,
           testCode,
           reviewReport: lastVerdict,

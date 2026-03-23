@@ -17,27 +17,25 @@ import type { SubTask, TaskReport } from "./types.js";
  */
 export function getFirstResponse(result: TaskResult): string {
   const step = result.stepResults.find((s) => s.status === "success");
-  return step?.snapshot ?? "";
+  return step?.response ?? step?.snapshot ?? "";
 }
 
 /**
  * 从 TaskResult 中提取结构化的 TaskReport
  */
 export function extractReport(st: SubTask, result: TaskResult): TaskReport {
-  const implStep = result.stepResults.find((s) => s.stepId === "impl");
-  const reviewStep = result.stepResults.find((s) => s.stepId === "review");
-  const attackStep = result.stepResults.find((s) => s.stepId === "attack");
-  const issueStep = result.stepResults.find(
-    (s) => s.stepId === "propose_issues",
-  );
+  const getContent = (stepId: string) => {
+    const s = result.stepResults.find((r) => r.stepId === stepId);
+    return s?.response ?? s?.snapshot ?? "";
+  };
 
   return {
     taskId: st.id,
     intention: st.intention,
-    implementation: implStep?.snapshot ?? "",
-    codeReview: reviewStep?.snapshot ?? "",
-    attackReview: attackStep?.snapshot ?? "",
-    issueProposals: issueStep?.snapshot ?? "",
+    implementation: getContent("impl"),
+    codeReview: getContent("review"),
+    attackReview: getContent("attack"),
+    issueProposals: getContent("propose_issues"),
   };
 }
 

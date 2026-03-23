@@ -23,6 +23,31 @@ timeout = 30000                           # Connection timeout (ms)
 humanize = true                           # Simulate human typing rhythm
 windowTitle = "Coacker"                   # Window title to connect to
 
+# ─── Toolkit (可选辅助工具，Brain 用来预处理上下文) ───
+
+# --- AST 分析器: 二选一 ---
+# 方式 A: 单语言 (向后兼容)
+# [backend.toolkit.ast]
+# languagePath = "./tree-sitter-typescript.wasm"
+
+# 方式 B: 多语言 (推荐) — 自动从 tree-sitter-wasms 包解析 WASM
+# [[backend.toolkit.ast.languages]]
+# lang = "solidity"                     # 可选: typescript, solidity, rust
+# [[backend.toolkit.ast.languages]]
+# lang = "typescript"
+
+# [backend.toolkit.mcp]
+# command = "npx"                                   # MCP Server 启动命令
+# args = ["rust-analyzer-mcp"]                      # MCP Server 参数
+
+# [backend.toolkit.sandbox]
+# baseDir = "."                                     # Sandbox 工作目录
+# allowedCommands = ["npx", "semgrep", "slither"]  # 额外允许的命令 (SAST 工具等)
+
+# [backend.toolkit.repoMap]
+# tokenBudget = 1024                                # RepoMap prompt 预算 (tokens)
+# fileGlobs = ["**/*.ts", "**/*.rs", "**/*.sol"]    # 扫描的文件类型
+
 # ─── Brain (审查管道调优) ───
 [brain]
 type = "audit"
@@ -30,11 +55,19 @@ type = "audit"
 [brain.audit]
 maxGapRounds = 2                          # Gap Analyzer iteration limit (0 = disable)
 maxSubTasks = 3                           # Max sub-tasks per round
+# knowledgeDir = ".coacker/docs"          # 预设领域知识目录
+
+# [brain.audit.spinBreaker]
+# maxConsecutiveSpins = 2                   # 连续 N 轮低价值 findings 后自动停止
 
 [brain.validate]
 maxReviewAttempts = 3                     # Review-retry loop limit
 excludeLabels = ["wontfix", "duplicate", "invalid"]  # Blacklist: skip issues with these labels
 draftOnFailure = true                     # Mark draft on failure
+
+# [brain.validate.sast]
+# command = "npx"                          # SAST 工具命令
+# args = ["semgrep", "--config=auto", "."] # SAST 工具参数
 
 # ─── Player ───
 [player]

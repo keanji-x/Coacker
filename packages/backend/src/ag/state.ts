@@ -132,9 +132,9 @@ const Probes = {
  * 检测 Agent 当前状态
  *
  * 优先级:
- *   1. Send 按钮可见 → IDLE (AI 完成, 即使有残留 Accept/Retry 按钮)
- *   2. Accept 按钮可见 → WAITING_APPROVAL
- *   3. Retry 按钮可见 → ERROR_TERMINATED
+ *   1. Accept 按钮可见 → WAITING_APPROVAL
+ *   2. Retry 按钮可见 → ERROR_TERMINATED
+ *   3. Send 按钮可见 → IDLE
  *   4. 都没有 → GENERATING
  */
 export async function detectState(page: Page): Promise<AgentState> {
@@ -142,15 +142,12 @@ export async function detectState(page: Page): Promise<AgentState> {
     ({ probes }) => {
       // 动态构造检测函数 (evaluate 里不能直接引用外部闭包)
       const hasSend = new Function(probes.hasSendButton)() as boolean;
-
-      // Send 可见 = AI 已完成, 直接返回 idle
-      if (hasSend) return "idle";
-
       const hasAccept = new Function(probes.hasAcceptButton)() as boolean;
       const hasRetry = new Function(probes.hasRetryButton)() as boolean;
 
       if (hasAccept) return "waiting_approval";
       if (hasRetry) return "error_terminated";
+      if (hasSend) return "idle";
       return "generating";
     },
     {

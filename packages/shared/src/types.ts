@@ -46,6 +46,22 @@ export interface BackendConfig {
   type?: string;
   /** AG (CDP) 配置 */
   ag?: AgConfig;
+  /** Toolkit 辅助工具配置 (可选) */
+  toolkit?: ToolkitConfig;
+}
+
+/** Toolkit 配置 — 辅助工具 (MCP / AST / Sandbox / RepoMap) */
+export interface ToolkitConfig {
+  /** MCP 协议客户端配置 */
+  mcp?: { command?: string; args?: string[] };
+  /** AST 分析器配置 (单语言或多语言) */
+  ast?:
+    | { languagePath?: string }
+    | { languages?: Array<{ lang: string; wasmPath?: string }> };
+  /** Sandbox 受限执行配置 */
+  sandbox?: { baseDir?: string; allowedCommands?: string[] };
+  /** RepoMap 全库符号图谱配置 */
+  repoMap?: { tokenBudget?: number; fileGlobs?: string[] };
 }
 
 /** AG CDP 配置 */
@@ -76,6 +92,10 @@ export interface AuditConfig {
   maxGapRounds?: number;
   /** 最大子任务数 */
   maxSubTasks?: number;
+  /** 空转断路器阈值 (连续 N 轮低价值 findings 后自动停止) */
+  spinBreaker?: { maxConsecutiveSpins?: number };
+  /** 预设知识目录 (默认 .coacker/docs/) */
+  knowledgeDir?: string;
 }
 
 /** 验证管道配置 — Issue Validator Brain 调优参数 */
@@ -86,6 +106,8 @@ export interface ValidateConfig {
   excludeLabels?: string[];
   /** 失败后标记 draft (default true) */
   draftOnFailure?: boolean;
+  /** SAST 门禁命令 (PR 创建前的静态安全扫描) */
+  sast?: { command?: string; args?: string[] };
 }
 
 /** Player 配置 */
@@ -152,6 +174,8 @@ export interface StepResult {
   prompt: string;
   /** 面板全量快照 (debug/日志用) */
   snapshot: string;
+  /** 文件内容 (primary response). Falls back to snapshot if unavailable */
+  response?: string;
   /** 完成状态 */
   status: "success" | "error" | "skipped";
   /** 耗时 (秒) */
